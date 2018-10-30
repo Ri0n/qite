@@ -65,7 +65,8 @@ void InteractiveTextController::unregisterController(InteractiveTextElementContr
 bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
 {
     bool ret = false;
-    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove) {
+    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove || event->type() == QEvent::MouseButtonPress) {
+        bool cursorChanged = false;
         auto e = static_cast<QHoverEvent*>(event);
         int docLPos = _textEdit->document()->documentLayout()->hitTest( e->posF(), Qt::ExactHit );
         if (docLPos != -1) {
@@ -86,11 +87,12 @@ bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
                     ret = (*it)->mouseEvent(event, format, rect);
                     if (ret) {
                         _textEdit->viewport()->setCursor((*it)->cursor());
+                        cursorChanged = true;
                     }
                 }
             }
         }
-        if (!ret && _lastHandled) { // previousy we changed cursor shape but nothing handled now. need default
+        if (!cursorChanged && _lastHandled) { // previousy we changed cursor shape but nothing handled now. need default
             _textEdit->viewport()->setCursor(Qt::IBeamCursor);
         }
         _lastHandled = ret;
@@ -100,7 +102,7 @@ bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
         _textEdit->viewport()->setCursor(Qt::IBeamCursor);
         _lastHandled = false;
     } else {
-        //qDebug() << obj->objectName() << event->type();
+        qDebug() << obj->objectName() << event->type();
         _lastHandled = false;
     }
     if (!ret) {

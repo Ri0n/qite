@@ -12,6 +12,7 @@ class ITEAudioController : public InteractiveTextElementController
 
     QCursor _cursor;
 
+    bool isOnButton(const QPoint &pos, const QRect &rect);
 public:
     using InteractiveTextElementController::InteractiveTextElementController;
 

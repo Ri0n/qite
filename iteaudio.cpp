@@ -117,18 +117,29 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
         qDebug() << "inside of player" << charFormat.property(AudioMessageFormat::Id).toUInt() << rect;
 
         // TODO cache computing
-        int bgOutlineWidth = 2;
-        QRect bgRect(rect.adjusted(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2));
-        int radius = int(bgRect.height()) / 2;
-        auto btnCenter = bgRect.topLeft() + QPoint(radius, radius);
-        if (QVector2D(btnCenter).distanceToPoint(QVector2D(static_cast<QHoverEvent*>(event)->pos())) <= radius - 4) {
+        if (isOnButton(static_cast<QHoverEvent*>(event)->pos(), rect)) {
             qDebug() << "on button";
             _cursor = QCursor(Qt::PointingHandCursor);
         } else {
             _cursor = QCursor(Qt::ArrowCursor);
         }
+    } else if (event->type() == QEvent::MouseButtonPress) {
+        auto me = static_cast<QMouseEvent*>(event);
+        if (isOnButton(me->pos(), rect)) {
+            qDebug() << "playing music!";
+        }
     }
     return true;
+}
+
+bool ITEAudioController::isOnButton(const QPoint &pos, const QRect &rect)
+{
+    // TODO cache computing
+    int bgOutlineWidth = 2;
+    QRect bgRect(rect.adjusted(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2));
+    int radius = int(bgRect.height()) / 2;
+    auto btnCenter = bgRect.topLeft() + QPoint(radius, radius);
+    return QVector2D(btnCenter).distanceToPoint(QVector2D(pos)) <= (radius - 4);
 }
 
 QCursor ITEAudioController::cursor()
