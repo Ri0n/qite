@@ -6,6 +6,7 @@
 #include <QTextObjectInterface>
 #include <QDebug>
 #include <QHoverEvent>
+#include <QScrollBar>
 
 
 
@@ -45,6 +46,8 @@ InteractiveTextController::InteractiveTextController(QTextEdit *textEdit, int ba
     _objectType(baseObjectType)
 {
     textEdit->installEventFilter(this);
+    textEdit->viewport()->installEventFilter(this);
+
     //ui->textEdit->setMouseTracking(true);
 }
 
@@ -65,10 +68,18 @@ void InteractiveTextController::unregisterController(InteractiveTextElementContr
 bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
 {
     bool ret = false;
-    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove || event->type() == QEvent::MouseButtonPress) {
+    if ((obj == _textEdit && (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove)) ||
+            (obj == _textEdit->viewport() && event->type() == QEvent::MouseButtonPress))
+    {
         bool cursorChanged = false;
-        auto e = static_cast<QHoverEvent*>(event);
-        int docLPos = _textEdit->document()->documentLayout()->hitTest( e->posF(), Qt::ExactHit );
+        QPointF pos;
+        if (event->type() == QEvent::MouseButtonPress) {
+            pos = static_cast<QMouseEvent*>(event)->pos();
+        } else {
+            pos = static_cast<QHoverEvent*>(event)->posF();
+        }
+        pos += QPointF(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
+        int docLPos = _textEdit->document()->documentLayout()->hitTest( pos, Qt::ExactHit );
         if (docLPos != -1) {
 
             QTextCursor newCursor(_textEdit->document());
@@ -97,11 +108,11 @@ bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
         }
         _lastHandled = ret;
 
-    } else if (event->type() == QEvent::HoverLeave) {
+    } else if (obj == _textEdit && event->type() == QEvent::HoverLeave) {
         qDebug() << "exit all";
         _textEdit->viewport()->setCursor(Qt::IBeamCursor);
         _lastHandled = false;
-    } else {
+    } else if (obj == _textEdit) {
         qDebug() << obj->objectName() << event->type();
         _lastHandled = false;
     }
