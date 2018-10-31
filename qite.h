@@ -1,5 +1,5 @@
-#ifndef INTERACTIVETEXTOVERLORD_H
-#define INTERACTIVETEXTOVERLORD_H
+#ifndef QITE_H
+#define QITE_H
 
 #include <QObject>
 #include <QTextObjectInterface>
@@ -7,9 +7,20 @@
 class QTextEdit;
 class InteractiveTextController;
 
-//-------
-// Interactive handlers
-//-----------
+class InteractiveTextFormat : public QTextCharFormat
+{
+public:
+    using QTextCharFormat::QTextCharFormat;
+
+    enum Property {
+        Id =              QTextFormat::UserProperty + 10,
+        UserProperty
+    };
+
+    inline InteractiveTextFormat(int objectType)
+    { setObjectType(objectType); }
+};
+
 class InteractiveTextElementController : public QObject, public QTextObjectInterface
 {
     Q_OBJECT
@@ -19,7 +30,7 @@ protected:
     InteractiveTextController *itc;
     int objectType;
 
-    virtual bool mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect);
+    virtual bool mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect, QTextCursor &selected);
 public:
     InteractiveTextElementController(InteractiveTextController *itc);
     virtual ~InteractiveTextElementController();
@@ -36,8 +47,7 @@ public:
 
     int registerController(InteractiveTextElementController *elementController);
     void unregisterController(InteractiveTextElementController *elementController);
-
-    inline quint32 uniqueElementId() { return _uniqueElementId++; }
+    quint32 insert(InteractiveTextFormat &fmt);
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
 private:
@@ -50,4 +60,4 @@ private:
 
 
 
-#endif // INTERACTIVETEXTOVERLORD_H
+#endif // QITE_H

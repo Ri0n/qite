@@ -1,4 +1,4 @@
-#include "interactivetextoverlord.h"
+#include "qite.h"
 
 #include <QTextEdit>
 #include <QPainter>
@@ -24,7 +24,7 @@ InteractiveTextElementController::~InteractiveTextElementController()
     itc->unregisterController(this);
 }
 
-bool InteractiveTextElementController::mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect)
+bool InteractiveTextElementController::mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect, QTextCursor &selected)
 {
     Q_UNUSED(event)
     Q_UNUSED(charFormat)
@@ -65,6 +65,15 @@ void InteractiveTextController::unregisterController(InteractiveTextElementContr
     _controllers.remove(elementController->objectType);
 }
 
+quint32 InteractiveTextController::insert(InteractiveTextFormat &fmt)
+{
+    auto id = _uniqueElementId++;
+    fmt.setProperty(InteractiveTextFormat::Id, id);
+    _textEdit->textCursor().insertText(QString(QChar::ObjectReplacementCharacter), fmt);
+    // TODO check if mouse is already on the element
+    return id;
+}
+
 bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
 {
     bool ret = false;
@@ -95,7 +104,8 @@ bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
                 if (_controllers.constEnd() != it) {
                     QRect cr = _textEdit->cursorRect(newCursor);
                     QRect rect(QPoint(left, cr.top()), QPoint(cr.left() - 1, cr.bottom()));
-                    ret = (*it)->mouseEvent(event, format, rect);
+                    newCursor.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor); // select it to quickly change format if necessary
+                    ret = (*it)->mouseEvent(event, format, rect, newCursor);
                     if (ret) {
                         _textEdit->viewport()->setCursor((*it)->cursor());
                         cursorChanged = true;

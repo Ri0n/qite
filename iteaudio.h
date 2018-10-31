@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QCursor>
 
-#include "interactivetextoverlord.h"
+#include "qite.h"
 
 class ITEAudioController : public InteractiveTextElementController
 {
@@ -20,10 +20,10 @@ public:
     void drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format);
 
 
-    void add(const QUrl &audioSrc);
+    void insert(const QUrl &audioSrc);
     QCursor cursor();
 protected:
-    bool mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect);
+    bool mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect, QTextCursor &selected);
 };
 
 #endif // ITEAUDIO_H

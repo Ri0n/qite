@@ -24,14 +24,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 
 SOURCES += \
-        main.cpp \
-        mainwindow.cpp \
-    interactivetextoverlord.cpp \
+    main.cpp \
+    mainwindow.cpp \
+    qite.cpp \
     iteaudio.cpp
 
 HEADERS += \
-        mainwindow.h \
-    interactivetextoverlord.h \
+    mainwindow.h \
+    qite.h \
     iteaudio.h
 
 FORMS += \
