@@ -6,15 +6,33 @@
 
 #include "qite.h"
 
+class QMediaPlayer;
+
 class ITEAudioController : public InteractiveTextElementController
 {
     Q_OBJECT
 
     QCursor _cursor;
+    QMap<quint32,QMediaPlayer*> activePlayers;
+
+    // geometry
+    QSize elementSize;
+    QRectF bgRect;
+    int bgOutlineWidth;
+    double bgRectRadius;
+    QPointF btnCenter;
+    int btnRadius;
+    int signSize;
+    int scaleOutlineWidth;
+    QRectF scaleRect;
+    int lastFontSize = 0;
+
 
     bool isOnButton(const QPoint &pos, const QRect &rect);
+    void updateGeomtry();
 public:
-    using InteractiveTextElementController::InteractiveTextElementController;
+    ITEAudioController(InteractiveTextController *itc);
+    //using InteractiveTextElementController::InteractiveTextElementController;
 
     QSizeF intrinsicSize(QTextDocument *doc, int posInDocument, const QTextFormat &format);
     void drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format);

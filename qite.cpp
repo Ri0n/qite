@@ -29,6 +29,7 @@ bool InteractiveTextElementController::mouseEvent(QEvent *event, const QTextChar
     Q_UNUSED(event)
     Q_UNUSED(charFormat)
     Q_UNUSED(rect)
+    Q_UNUSED(selected)
     return false;
 }
 
@@ -132,4 +133,3 @@ bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
     }
     return ret;
 }
-

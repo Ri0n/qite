@@ -6,14 +6,14 @@
 #include <QVector2D>
 #include <QEvent>
 #include <QHoverEvent>
-
+#include <QMediaPlayer>
 
 class AudioMessageFormat : public InteractiveTextFormat
 {
 public:
     enum Property {
         Url =           InteractiveTextFormat::UserProperty,
-        PlayPosition, /* in percents */
+        PlayPosition, /* in pixels */
         State
     };
 
@@ -24,16 +24,19 @@ public:
     Q_DECLARE_FLAGS(Flags, Flag)
 
     using InteractiveTextFormat::InteractiveTextFormat;
-    AudioMessageFormat(int objectType, const QUrl &url, qint64 position = 0, const Flags &state = 0);
+    AudioMessageFormat(int objectType, const QUrl &url, quint32 position = 0, const Flags &state = Flags());
 
     Flags state() const;
     void setState(const Flags &state);
+
+    quint32 playPosition() const;
+    void setPlayPosition(quint32 position);
 
     static AudioMessageFormat fromCharFormat(const QTextCharFormat &fmt) { return AudioMessageFormat(fmt); }
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(AudioMessageFormat::Flags)
 
-AudioMessageFormat::AudioMessageFormat(int objectType, const QUrl &url, qint64 position, const Flags &state)
+AudioMessageFormat::AudioMessageFormat(int objectType, const QUrl &url, quint32 position, const Flags &state)
     : InteractiveTextFormat(objectType)
 {
     setProperty(Url, url);
@@ -51,6 +54,16 @@ void AudioMessageFormat::setState(const AudioMessageFormat::Flags &state)
     setProperty(State, unsigned(state));
 }
 
+quint32 AudioMessageFormat::playPosition() const
+{
+    return property(AudioMessageFormat::PlayPosition).toUInt();
+}
+
+void AudioMessageFormat::setPlayPosition(quint32 position)
+{
+    setProperty(AudioMessageFormat::PlayPosition, position);
+}
+
 
 //----------------------------------------------------------------------------
 // ITEAudioController
@@ -60,13 +73,37 @@ QSizeF ITEAudioController::intrinsicSize(QTextDocument *doc, int posInDocument, 
     Q_UNUSED(doc);
     Q_UNUSED(posInDocument)
     const QTextCharFormat charFormat = format.toCharFormat();
-    int skinHeight = 50; // FIXME
-    int skinWidth = 200; // FIXME
-    int skinScale = 1;
-    if (charFormat.font().pixelSize() > 1.5*skinHeight) {
-        skinScale <<= 1;
+    if (lastFontSize != charFormat.font().pixelSize()) {
+        lastFontSize = charFormat.font().pixelSize();
+        updateGeomtry();
     }
-    return QSize(skinWidth, skinHeight);
+    return elementSize;
+}
+
+void ITEAudioController::updateGeomtry()
+{
+    // compute geomtry of player
+    bgOutlineWidth = lastFontSize / 12;
+    if (bgOutlineWidth < 2) {
+        bgOutlineWidth = 2;
+    }
+
+    elementSize = QSize(bgOutlineWidth * 100, bgOutlineWidth * 25);
+    bgRect = QRectF(QPoint(0,0), elementSize);
+    bgRect.adjust(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2);
+    bgRectRadius = bgRect.height() / 5;
+
+    btnRadius = int(bgRect.height()) / 2;
+    btnCenter = bgRect.topLeft() + QPoint(btnRadius, btnRadius);
+    btnRadius -= 4;
+
+    signSize = btnRadius / 2;
+
+    // draw scale
+    scaleOutlineWidth = bgOutlineWidth;
+    QPointF scaleTopLeft = bgRect.topLeft() + QPointF(bgRect.height() + bgRect.height() / 10, bgRect.height() * 0.7);
+    QPointF scaleBottomRight(bgRect.right() - bgRect.height() / 5, scaleTopLeft.y() + bgRect.height() / 10);
+    scaleRect = QRectF(scaleTopLeft, scaleBottomRight);
 }
 
 void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format)
@@ -77,14 +114,11 @@ void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QText
 
     painter->setRenderHints( QPainter::HighQualityAntialiasing );
 
-    int bgOutlineWidth = 2;
-    QRectF bgRect(rect.adjusted(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2));
-    QPen bgPen(QColor(100,200,100));
+    QPen bgPen(QColor(100,200,100)); // TODO name all the magic colors
     bgPen.setWidth(bgOutlineWidth);
     painter->setPen(bgPen);
-
     painter->setBrush(QColor(150,250,150));
-    painter->drawRoundedRect(bgRect, 10, 10);
+    painter->drawRoundedRect(bgRect.translated(rect.topLeft()), bgRectRadius, bgRectRadius);
 
     // draw button
     if (audioFormat.state() & AudioMessageFormat::MouseOnButton) {
@@ -92,42 +126,56 @@ void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QText
     } else {
         painter->setBrush(QColor(120,220,120));
     }
-    int radius = int(bgRect.height()) / 2;
-    QPointF btnCenter = bgRect.topLeft() + QPoint(radius, radius);
-    painter->drawEllipse(btnCenter, radius - 4, radius - 4);
+    auto xBtnCenter = btnCenter + rect.topLeft();
+    painter->drawEllipse(xBtnCenter, btnRadius, btnRadius);
 
     // draw pause/play
     QPen signPen((QColor(Qt::white)));
-    signPen.setWidth(2);
+    signPen.setWidth(bgOutlineWidth);
     painter->setPen(signPen);
     painter->setBrush(QColor(Qt::white));
-    int signSize = ( radius - 4 ) / 2;
-    QPointF play[3] = {btnCenter - QPoint(signSize / 2, signSize), btnCenter - QPoint(signSize / 2, -signSize), btnCenter + QPoint(signSize, 0)};
-    painter->drawConvexPolygon(play, 3);
-    // TODO pause
+    bool isPlaying = audioFormat.state() & AudioMessageFormat::Playing;
+    if (isPlaying) {
+        QRectF bar(0,0,signSize / 3, signSize * 2);
+        bar.moveCenter(xBtnCenter - QPointF(signSize / 2, 0));
+        painter->drawRect(bar);
+        bar.moveCenter(xBtnCenter + QPointF(signSize / 2, 0));
+        painter->drawRect(bar);
+    } else {
+        QPointF play[3] = {xBtnCenter - QPoint(signSize / 2, signSize), xBtnCenter - QPoint(signSize / 2, -signSize), xBtnCenter + QPoint(signSize, 0)};
+        painter->drawConvexPolygon(play, 3);
+    }
 
     // draw scale
-    int scaleOutlineWidth = 2;
     QPen scalePen(QColor(100,200,100));
     scalePen.setWidth(scaleOutlineWidth);
     painter->setPen(scalePen);
     painter->setBrush(QColor(120,220,120));
-    QPointF scaleTopLeft = bgRect.topLeft() + QPointF(radius * 2 + 4, radius * 1.4);
-    QPointF scaleBottomRight(bgRect.right() - 10, scaleTopLeft.y() + 6);
-    QRectF scaleRect(scaleTopLeft, scaleBottomRight);
-    painter->drawRoundedRect(scaleRect, scaleRect.height() / 2, scaleRect.height() / 2);
+    QRectF xScaleRect(scaleRect.translated(rect.topLeft()));
+    painter->drawRoundedRect(xScaleRect, scaleRect.height() / 2, scaleRect.height() / 2);
 
     // fill before runner
-    auto position = audioFormat.property(AudioMessageFormat::PlayPosition).toUInt();
-    Q_ASSERT(position <= 100); // percents
+    double position = 0; // in 0..1
+    if (isPlaying) {
+        auto player = activePlayers.value(audioFormat.id());
+        if (!player) {
+            qWarning("Player is not found for id=%u", audioFormat.id());
+        } else {
+            position = double(player->position()) / double(player->duration());
+        }
+    }
 
-    if (position) {
+    if (isPlaying) {
         painter->setPen(Qt::NoPen);
         painter->setBrush(QColor(170,255,170));
-        QRectF playedRect(scaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2)); // to the width of the scale border
-        playedRect.setWidth(playedRect.width() / 100.0 * position);
+        QRectF playedRect(xScaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2)); // to the width of the scale border
+        playedRect.setWidth(playedRect.width() * position);
         painter->drawRoundedRect(playedRect, playedRect.height() / 2, playedRect.height() / 2);
     }
+
+    // runner
+    //QRectF runnerRect(playedRect);
+    //runnerRect.set
 }
 
 void ITEAudioController::insert(const QUrl &audioSrc)
@@ -161,8 +209,9 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
         state ^= AudioMessageFormat::MouseOnButton;
     }
 
+    auto playerId = charFormat.property(AudioMessageFormat::Id).toUInt();
     if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove) {
-        qDebug() << "inside of player" << charFormat.property(AudioMessageFormat::Id).toUInt() << rect;
+        qDebug() << "inside of player" << playerId << rect;
 
 
     } else if (event->type() == QEvent::MouseButtonPress) {
@@ -170,6 +219,19 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
             qDebug() << "playing music!";
             playStateChanged = true;
             state ^= AudioMessageFormat::Playing;
+            auto player = activePlayers.value(playerId);
+            if (state & AudioMessageFormat::Playing) {
+                if (!player) {
+                    player = new QMediaPlayer;
+                    activePlayers.insert(playerId, player);
+                    player->setMedia(charFormat.property(AudioMessageFormat::Url).value<QUrl>());
+                }
+                player->play();
+            } else {
+                if (player) {
+                    player->pause();
+                }
+            }
         }
     }
 
@@ -184,12 +246,14 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
 
 bool ITEAudioController::isOnButton(const QPoint &pos, const QRect &rect)
 {
-    // TODO cache computing
-    int bgOutlineWidth = 2;
-    QRect bgRect(rect.adjusted(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2));
-    int radius = int(bgRect.height()) / 2;
-    auto btnCenter = bgRect.topLeft() + QPoint(radius, radius);
-    return QVector2D(btnCenter).distanceToPoint(QVector2D(pos)) <= (radius - 4);
+    QPoint rel = pos - rect.topLeft();
+    return QVector2D(btnCenter).distanceToPoint(QVector2D(rel)) <= btnRadius;
+}
+
+ITEAudioController::ITEAudioController(InteractiveTextController *itc)
+    : InteractiveTextElementController(itc)
+{
+
 }
 
 QCursor ITEAudioController::cursor()

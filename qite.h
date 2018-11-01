@@ -19,6 +19,11 @@ public:
 
     inline InteractiveTextFormat(int objectType)
     { setObjectType(objectType); }
+
+    inline quint32 id() const
+    {
+        return property(Id).toUInt();
+    }
 };
 
 class InteractiveTextElementController : public QObject, public QTextObjectInterface
