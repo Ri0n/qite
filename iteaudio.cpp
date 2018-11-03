@@ -223,9 +223,13 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
             if (state & AudioMessageFormat::Playing) {
                 if (!player) {
                     player = new QMediaPlayer;
+                    player->setProperty("playerId", playerId);
+                    player->setProperty("cursorPos", selected.position());
+                    connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(positionChanged(qint64)));
                     activePlayers.insert(playerId, player);
                     player->setMedia(charFormat.property(AudioMessageFormat::Url).value<QUrl>());
                 }
+                //player->setVolume(0);
                 player->play();
             } else {
                 if (player) {
@@ -248,6 +252,23 @@ bool ITEAudioController::isOnButton(const QPoint &pos, const QRect &rect)
 {
     QPoint rel = pos - rect.topLeft();
     return QVector2D(btnCenter).distanceToPoint(QVector2D(rel)) <= btnRadius;
+}
+
+void ITEAudioController::positionChanged(qint64 newPos)
+{
+    auto player = static_cast<QMediaPlayer *>(sender());
+    quint32 playerId = player->property("playerId").toUInt();
+    int textCursorPos = player->property("cursorPos").toInt();
+    QTextCursor cursor = itc->findElement(playerId, textCursorPos);
+    if (!cursor.isNull()) {
+        auto audioFormat = AudioMessageFormat::fromCharFormat(cursor.charFormat());
+        auto lastPixelPos = audioFormat.playPosition();
+        auto newPixelPos = decltype (lastPixelPos)(scaleRect.width() * (double(newPos) / double(player->duration())));
+        if (newPixelPos != lastPixelPos) {
+            audioFormat.setPlayPosition(newPixelPos);
+            cursor.setCharFormat(audioFormat);
+        }
+    }
 }
 
 ITEAudioController::ITEAudioController(InteractiveTextController *itc)

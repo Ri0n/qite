@@ -53,6 +53,7 @@ public:
     int registerController(InteractiveTextElementController *elementController);
     void unregisterController(InteractiveTextElementController *elementController);
     quint32 insert(InteractiveTextFormat &fmt);
+    QTextCursor findElement(quint32 elementId, int cursorPositionHint = 0);
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
 private:

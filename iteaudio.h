@@ -42,6 +42,8 @@ public:
     QCursor cursor();
 protected:
     bool mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect, QTextCursor &selected);
+private slots:
+    void positionChanged(qint64);
 };
 
 #endif // ITEAUDIO_H

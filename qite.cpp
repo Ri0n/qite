@@ -75,6 +75,29 @@ quint32 InteractiveTextController::insert(InteractiveTextFormat &fmt)
     return id;
 }
 
+QTextCursor InteractiveTextController::findElement(quint32 elementId, int cursorPositionHint)
+{
+    QTextCursor cursor(_textEdit->document());
+    cursor.setPosition(cursorPositionHint);
+
+    cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
+    QString selectedText = cursor.selectedText();
+    if (selectedText.size() && selectedText[0] == QChar::ObjectReplacementCharacter) {
+        if (cursor.charFormat().property(InteractiveTextFormat::Id).toUInt() == elementId) {
+            return cursor;
+        }
+    }
+
+    cursor.setPosition(0);
+    QString elText(QChar::ObjectReplacementCharacter);
+    while (!(cursor = _textEdit->document()->find(elText, cursor)).isNull()) {
+        if (cursor.charFormat().property(InteractiveTextFormat::Id).toUInt() == elementId) {
+            break;
+        }
+    }
+    return cursor;
+}
+
 bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
 {
     bool ret = false;
