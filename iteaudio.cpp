@@ -32,6 +32,8 @@ public:
     quint32 playPosition() const;
     void setPlayPosition(quint32 position);
 
+    QUrl url() const;
+
     static AudioMessageFormat fromCharFormat(const QTextCharFormat &fmt) { return AudioMessageFormat(fmt); }
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(AudioMessageFormat::Flags)
@@ -64,6 +66,10 @@ void AudioMessageFormat::setPlayPosition(quint32 position)
     setProperty(AudioMessageFormat::PlayPosition, position);
 }
 
+QUrl AudioMessageFormat::url() const
+{
+    return property(AudioMessageFormat::Url).value<QUrl>();
+}
 
 //----------------------------------------------------------------------------
 // ITEAudioController
@@ -89,7 +95,7 @@ void ITEAudioController::updateGeomtry()
     }
 
     elementSize = QSize(bgOutlineWidth * 100, bgOutlineWidth * 25);
-    bgRect = QRectF(QPoint(0,0), elementSize);
+    bgRect = QRect(QPoint(0,0), elementSize);
     bgRect.adjust(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2);
     bgRectRadius = bgRect.height() / 5;
 
@@ -118,7 +124,7 @@ void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QText
     bgPen.setWidth(bgOutlineWidth);
     painter->setPen(bgPen);
     painter->setBrush(QColor(150,250,150));
-    painter->drawRoundedRect(bgRect.translated(rect.topLeft()), bgRectRadius, bgRectRadius);
+    painter->drawRoundedRect(bgRect.translated(int(rect.left()), int(rect.top())), bgRectRadius, bgRectRadius);
 
     // draw button
     if (audioFormat.state() & AudioMessageFormat::MouseOnButton) {
@@ -184,16 +190,12 @@ void ITEAudioController::insert(const QUrl &audioSrc)
     itc->insert(fmt);
 }
 
-bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect, QTextCursor &selected)
+bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QTextCursor &selected)
 {
-    QPoint pos;
-    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove) {
-        pos = static_cast<QHoverEvent*>(event)->pos();
-    } else {
-        pos = static_cast<QMouseEvent*>(event)->pos();
+    quint32 onButton = false;
+    if (event.type != EventType::Leave) {
+        onButton = isOnButton(event.pos, bgRect)? AudioMessageFormat::MouseOnButton : 0;
     }
-    quint32 onButton = isOnButton(pos, rect)? AudioMessageFormat::MouseOnButton : 0;
-    // TODO cache computing
     if (onButton) {
         qDebug() << "on button";
         _cursor = QCursor(Qt::PointingHandCursor);
@@ -201,7 +203,8 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
         _cursor = QCursor(Qt::ArrowCursor);
     }
 
-    AudioMessageFormat::Flags state(charFormat.property(AudioMessageFormat::State).toUInt());
+    AudioMessageFormat format = AudioMessageFormat::fromCharFormat(selected.charFormat());
+    AudioMessageFormat::Flags state = format.state();
     bool onButtonChanged = (state & AudioMessageFormat::MouseOnButton) != onButton;
     bool playStateChanged = false;
 
@@ -209,12 +212,12 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
         state ^= AudioMessageFormat::MouseOnButton;
     }
 
-    auto playerId = charFormat.property(AudioMessageFormat::Id).toUInt();
-    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove) {
+    auto playerId = format.id();
+    if (event.type == EventType::Enter || event.type == EventType::Move) {
         qDebug() << "inside of player" << playerId << rect;
 
 
-    } else if (event->type() == QEvent::MouseButtonPress) {
+    } else if (event.type == EventType::Click) {
         if (onButton) {
             qDebug() << "playing music!";
             playStateChanged = true;
@@ -227,7 +230,7 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
                     player->setProperty("cursorPos", selected.position());
                     connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(positionChanged(qint64)));
                     activePlayers.insert(playerId, player);
-                    player->setMedia(charFormat.property(AudioMessageFormat::Url).value<QUrl>());
+                    player->setMedia(format.url());
                 }
                 //player->setVolume(0);
                 player->play();
@@ -240,9 +243,8 @@ bool ITEAudioController::mouseEvent(QEvent *event, const QTextCharFormat &charFo
     }
 
     if (onButtonChanged || playStateChanged) {
-        AudioMessageFormat fmt = AudioMessageFormat::fromCharFormat(charFormat);
-        fmt.setState(state);
-        selected.setCharFormat(fmt);
+        format.setState(state);
+        selected.setCharFormat(format);
     }
 
     return true;
@@ -271,7 +273,7 @@ void ITEAudioController::positionChanged(qint64 newPos)
     }
 }
 
-ITEAudioController::ITEAudioController(InteractiveTextController *itc)
+ITEAudioController::ITEAudioController(InteractiveText *itc)
     : InteractiveTextElementController(itc)
 {
 

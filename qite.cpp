@@ -13,7 +13,7 @@
 //----------------------------------//
 // InteractiveTextElementController //
 //----------------------------------//
-InteractiveTextElementController::InteractiveTextElementController(InteractiveTextController *it) :
+InteractiveTextElementController::InteractiveTextElementController(InteractiveText *it) :
     itc(it)
 {
     objectType = itc->registerController(this);
@@ -24,10 +24,9 @@ InteractiveTextElementController::~InteractiveTextElementController()
     itc->unregisterController(this);
 }
 
-bool InteractiveTextElementController::mouseEvent(QEvent *event, const QTextCharFormat &charFormat, const QRect &rect, QTextCursor &selected)
+bool InteractiveTextElementController::mouseEvent(const Event &event, const QRect &rect, QTextCursor &selected)
 {
     Q_UNUSED(event)
-    Q_UNUSED(charFormat)
     Q_UNUSED(rect)
     Q_UNUSED(selected)
     return false;
@@ -41,9 +40,10 @@ QCursor InteractiveTextElementController::cursor()
 //---------------------------//
 // InteractiveTextController //
 //---------------------------//
-InteractiveTextController::InteractiveTextController(QTextEdit *textEdit, int baseObjectType) :
+InteractiveText::InteractiveText(QTextEdit *textEdit, int baseObjectType) :
     QObject(textEdit),
     _textEdit(textEdit),
+    _baseObjectType(baseObjectType),
     _objectType(baseObjectType)
 {
     textEdit->installEventFilter(this);
@@ -52,21 +52,22 @@ InteractiveTextController::InteractiveTextController(QTextEdit *textEdit, int ba
     //ui->textEdit->setMouseTracking(true);
 }
 
-int InteractiveTextController::registerController(InteractiveTextElementController *elementController)
+int InteractiveText::registerController(InteractiveTextElementController *elementController)
 {
-    auto objectType = newObjectType();
-    QTextDocument *doc = textEdit()->document();
+    auto objectType = _objectType++;
+    QTextDocument *doc = _textEdit->document();
     doc->documentLayout()->registerHandler(objectType, elementController);
     _controllers.insert(objectType, elementController);
     return objectType;
 }
 
-void InteractiveTextController::unregisterController(InteractiveTextElementController *elementController)
+void InteractiveText::unregisterController(InteractiveTextElementController *elementController)
 {
+    textEdit()->document()->documentLayout()->unregisterHandler(elementController->objectType, elementController);
     _controllers.remove(elementController->objectType);
 }
 
-quint32 InteractiveTextController::insert(InteractiveTextFormat &fmt)
+quint32 InteractiveText::insert(InteractiveTextFormat &fmt)
 {
     auto id = _uniqueElementId++;
     fmt.setProperty(InteractiveTextFormat::Id, id);
@@ -75,7 +76,7 @@ quint32 InteractiveTextController::insert(InteractiveTextFormat &fmt)
     return id;
 }
 
-QTextCursor InteractiveTextController::findElement(quint32 elementId, int cursorPositionHint)
+QTextCursor InteractiveText::findElement(quint32 elementId, int cursorPositionHint)
 {
     QTextCursor cursor(_textEdit->document());
     cursor.setPosition(cursorPositionHint);
@@ -83,7 +84,9 @@ QTextCursor InteractiveTextController::findElement(quint32 elementId, int cursor
     cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
     QString selectedText = cursor.selectedText();
     if (selectedText.size() && selectedText[0] == QChar::ObjectReplacementCharacter) {
-        if (cursor.charFormat().property(InteractiveTextFormat::Id).toUInt() == elementId) {
+        QTextCharFormat fmt = cursor.charFormat();
+        auto otype = fmt.objectType();
+        if (otype >= _baseObjectType && otype < _objectType && fmt.property(InteractiveTextFormat::Id).toUInt() == elementId) {
             return cursor;
         }
     }
@@ -91,68 +94,114 @@ QTextCursor InteractiveTextController::findElement(quint32 elementId, int cursor
     cursor.setPosition(0);
     QString elText(QChar::ObjectReplacementCharacter);
     while (!(cursor = _textEdit->document()->find(elText, cursor)).isNull()) {
-        if (cursor.charFormat().property(InteractiveTextFormat::Id).toUInt() == elementId) {
+        QTextCharFormat fmt = cursor.charFormat();
+        auto otype = fmt.objectType();
+        if (otype >= _baseObjectType && otype < _objectType && fmt.property(InteractiveTextFormat::Id).toUInt() == elementId) {
             break;
         }
     }
     return cursor;
 }
 
-bool InteractiveTextController::eventFilter(QObject *obj, QEvent *event)
+bool InteractiveText::eventFilter(QObject *obj, QEvent *event)
 {
+    bool ourEvent = (obj == _textEdit && (event->type() == QEvent::HoverEnter ||
+                                          event->type() == QEvent::HoverMove ||
+                                          event->type() == QEvent::HoverLeave)) ||
+            (obj == _textEdit->viewport() && event->type() == QEvent::MouseButtonPress);
+    if (!ourEvent) {
+        return false;
+    }
+
     bool ret = false;
-    if ((obj == _textEdit && (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove)) ||
-            (obj == _textEdit->viewport() && event->type() == QEvent::MouseButtonPress))
+    bool leaveHandled = false;
+    QPoint pos;
+    if (event->type() == QEvent::MouseButtonPress) {
+        pos = static_cast<QMouseEvent*>(event)->pos();
+    } else {
+        pos = static_cast<QHoverEvent*>(event)->pos();
+    }
+    pos += QPoint(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
+
+    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove || event->type() == QEvent::MouseButtonPress)
     {
-        bool cursorChanged = false;
-        QPointF pos;
-        if (event->type() == QEvent::MouseButtonPress) {
-            pos = static_cast<QMouseEvent*>(event)->pos();
-        } else {
-            pos = static_cast<QHoverEvent*>(event)->posF();
-        }
-        pos += QPointF(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
         int docLPos = _textEdit->document()->documentLayout()->hitTest( pos, Qt::ExactHit );
         if (docLPos != -1) {
+            QTextCursor cursor(_textEdit->document());
+            cursor.setPosition(docLPos);
+            int left = _textEdit->cursorRect(cursor).left();
+            cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
+            if (cursor.selectedText()[0] == QChar::ObjectReplacementCharacter) {
 
-            QTextCursor newCursor(_textEdit->document());
-            newCursor.setPosition(docLPos);
-            auto ch = _textEdit->document()->characterAt(newCursor.position());
-
-            if (ch == QChar::ObjectReplacementCharacter) {
-                int left = _textEdit->cursorRect(newCursor).left();
-                newCursor.movePosition(QTextCursor::Right);
-                auto format = newCursor.charFormat();
+                auto format = cursor.charFormat();
+                auto elementId = format.property(InteractiveTextFormat::Id).toUInt();
                 auto ot = format.objectType();
-                auto it = _controllers.constFind(ot);
-                if (_controllers.constEnd() != it) {
-                    QRect cr = _textEdit->cursorRect(newCursor);
+                auto *elementController = _controllers.value(ot);
+                if (elementController) {
+                    // we are definitely on a known interactive element.
+                    // first we have to check what was before to generate proper events.
+                    bool isEnter = !_lastMouseHandled || _lastElementId != elementId;
+                    if (isEnter && _lastMouseHandled) { // jump from another element
+                        checkAndGenerateLeaveEvent(event);
+                    }
+                    leaveHandled = true;
+
+                    QRect cr = _textEdit->cursorRect(cursor);
                     QRect rect(QPoint(left, cr.top()), QPoint(cr.left() - 1, cr.bottom()));
-                    newCursor.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor); // select it to quickly change format if necessary
-                    ret = (*it)->mouseEvent(event, format, rect, newCursor);
+
+                    InteractiveTextElementController::Event iteEvent;
+                    iteEvent.qevent = event;
+                    iteEvent.pos = QPoint(pos.x() - rect.left(), pos.y() - rect.top());
+                    qDebug() << pos << iteEvent.pos << rect;
+                    if (event->type() == QEvent::MouseButtonPress) {
+                        iteEvent.type = InteractiveTextElementController::EventType::Click;
+                    } else {
+                        iteEvent.type = isEnter? InteractiveTextElementController::EventType::Enter :
+                                                 InteractiveTextElementController::EventType::Move;
+                    }
+
+                    ret = elementController->mouseEvent(iteEvent, rect, cursor);
                     if (ret) {
-                        _textEdit->viewport()->setCursor((*it)->cursor());
-                        cursorChanged = true;
+                        _lastCursorPositionHint = cursor.position();
+                        _lastElementId = elementId;
+                        _textEdit->viewport()->setCursor(elementController->cursor());
+                    } else {
+                        _textEdit->viewport()->setCursor(Qt::IBeamCursor);
                     }
                 }
             }
         }
-        if (!cursorChanged && _lastHandled) { // previousy we changed cursor shape but nothing handled now. need default
+    }
+
+    if (!leaveHandled) {
+        // not checked yet if we need leave event.This also means we are not on an element.
+        checkAndGenerateLeaveEvent(event);
+        if (_lastMouseHandled) {
             _textEdit->viewport()->setCursor(Qt::IBeamCursor);
         }
-        _lastHandled = ret;
+    }
 
-    } else if (obj == _textEdit && event->type() == QEvent::HoverLeave) {
-        qDebug() << "exit all";
-        _textEdit->viewport()->setCursor(Qt::IBeamCursor);
-        _lastHandled = false;
-    } else if (obj == _textEdit) {
-        qDebug() << obj->objectName() << event->type();
-        _lastHandled = false;
-    }
-    if (!ret) {
-        ret = QObject::eventFilter(obj, event);
-        //_textEdit->setCursor(QCursor(Qt::IBeamCursor));
-    }
+    _lastMouseHandled = ret;
     return ret;
+}
+
+void InteractiveText::checkAndGenerateLeaveEvent(QEvent *event)
+{
+    if (!_lastMouseHandled) {
+        return;
+    }
+    QTextCursor cursor = findElement(_lastElementId, _lastCursorPositionHint);
+    if (!cursor.isNull()) {
+        auto fmt = cursor.charFormat();
+        InteractiveTextElementController *controller = _controllers.value(fmt.objectType());
+        if (!controller) {
+            return;
+        }
+
+        InteractiveTextElementController::Event iteEvent;
+        iteEvent.qevent = event;
+        iteEvent.type = InteractiveTextElementController::EventType::Leave;
+
+        controller->mouseEvent(iteEvent, QRect(), cursor);
+    }
 }
