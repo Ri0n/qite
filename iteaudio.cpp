@@ -25,6 +25,7 @@ under the License.
 #include <QEvent>
 #include <QHoverEvent>
 #include <QMediaPlayer>
+#include <QTimer>
 
 class AudioMessageFormat : public InteractiveTextFormat
 {
@@ -128,6 +129,7 @@ void ITEAudioController::updateGeomtry()
     QPointF scaleTopLeft = bgRect.topLeft() + QPointF(bgRect.height() + bgRect.height() / 10, bgRect.height() * 0.7);
     QPointF scaleBottomRight(bgRect.right() - bgRect.height() / 5, scaleTopLeft.y() + bgRect.height() / 10);
     scaleRect = QRectF(scaleTopLeft, scaleBottomRight);
+    scaleFillRect = scaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2);
 }
 
 void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format)
@@ -179,7 +181,7 @@ void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QText
     painter->drawRoundedRect(xScaleRect, scaleRect.height() / 2, scaleRect.height() / 2);
 
     // fill before runner
-    double position = 0; // in 0..1
+    /*double position = 0; // in 0..1
     if (isPlaying) {
         auto player = activePlayers.value(audioFormat.id());
         if (!player) {
@@ -187,13 +189,14 @@ void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QText
         } else {
             position = double(player->position()) / double(player->duration());
         }
-    }
+    }*/
 
-    if (isPlaying) {
+    auto playPos = audioFormat.playPosition();
+    if (playPos) {
         painter->setPen(Qt::NoPen);
         painter->setBrush(QColor(170,255,170));
-        QRectF playedRect(xScaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2)); // to the width of the scale border
-        playedRect.setWidth(playedRect.width() * position);
+        QRectF playedRect(scaleFillRect.translated(rect.topLeft())); // to the width of the scale border
+        playedRect.setWidth(playPos);
         painter->drawRoundedRect(playedRect, playedRect.height() / 2, playedRect.height() / 2);
     }
 
@@ -225,6 +228,7 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
     AudioMessageFormat::Flags state = format.state();
     bool onButtonChanged = (state & AudioMessageFormat::MouseOnButton) != onButton;
     bool playStateChanged = false;
+    bool positionSet = false;
 
     if (onButtonChanged) {
         state ^= AudioMessageFormat::MouseOnButton;
@@ -238,24 +242,58 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
             auto player = activePlayers.value(playerId);
             if (state & AudioMessageFormat::Playing) {
                 if (!player) {
-                    player = new QMediaPlayer;
+                    player = new QMediaPlayer(this);
                     player->setProperty("playerId", playerId);
-                    player->setProperty("cursorPos", selected.position());
-                    connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(positionChanged(qint64)));
+                    player->setProperty("cursorPos", selected.anchor());
                     activePlayers.insert(playerId, player);
                     player->setMedia(format.url());
+                    auto part = double(format.playPosition()) / double(scaleFillRect.width());
+
+                    if (player->duration() > 0) {
+                        player->setPosition(qint64(player->duration() * part));
+                        connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(playerPositionChanged(qint64)));
+                    } else {
+                        connect(player, &QMediaPlayer::durationChanged, [player,part,this](qint64 duration) {
+                            // the timer is a workaround for some Qt bug
+                            QTimer::singleShot(0, [player,part,this,duration](){
+                                player->setPosition(qint64(duration * part));
+                                connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(playerPositionChanged(qint64)));
+                            });
+                        });
+                    }
+
+                    connect(player, SIGNAL(stateChanged(QMediaPlayer::State)), this, SLOT(playerStateChanged(QMediaPlayer::State)));
+
+
                 }
                 //player->setVolume(0);
                 player->play();
             } else {
                 if (player) {
                     player->pause();
+                    //player->disconnect(this);activePlayers.take(playerId)->deleteLater();
                 }
             }
+        } else if (scaleRect.contains(event.pos)) {
+            // include outline to clickable area but compute only for inner part
+            double part;
+            if (event.pos.x() < scaleFillRect.left()) {
+                part = 0;
+            } else if (event.pos.x() >= scaleFillRect.right()) {
+                part = 1;
+            } else {
+                part = double(event.pos.x() - scaleFillRect.left()) / double(scaleFillRect.width());
+            }
+            auto player = activePlayers.value(playerId);
+            if (player) {
+                player->setPosition(qint64(player->duration() * part));
+            } // else it's not playing likely
+            format.setPlayPosition(quint32(double(scaleFillRect.width()) * part));
+            positionSet = true;
         }
     }
 
-    if (onButtonChanged || playStateChanged) {
+    if (onButtonChanged || playStateChanged || positionSet) {
         format.setState(state);
         selected.setCharFormat(format);
     }
@@ -269,7 +307,7 @@ bool ITEAudioController::isOnButton(const QPoint &pos, const QRect &rect)
     return QVector2D(btnCenter).distanceToPoint(QVector2D(rel)) <= btnRadius;
 }
 
-void ITEAudioController::positionChanged(qint64 newPos)
+void ITEAudioController::playerPositionChanged(qint64 newPos)
 {
     auto player = static_cast<QMediaPlayer *>(sender());
     quint32 playerId = player->property("playerId").toUInt();
@@ -278,11 +316,27 @@ void ITEAudioController::positionChanged(qint64 newPos)
     if (!cursor.isNull()) {
         auto audioFormat = AudioMessageFormat::fromCharFormat(cursor.charFormat());
         auto lastPixelPos = audioFormat.playPosition();
-        auto newPixelPos = decltype (lastPixelPos)(scaleRect.width() * (double(newPos) / double(player->duration())));
+        auto newPixelPos = decltype (lastPixelPos)(scaleFillRect.width() * (double(newPos) / double(player->duration())));
         if (newPixelPos != lastPixelPos) {
             audioFormat.setPlayPosition(newPixelPos);
             cursor.setCharFormat(audioFormat);
         }
+    }
+}
+
+void ITEAudioController::playerStateChanged(QMediaPlayer::State state)
+{
+    if (state == QMediaPlayer::StoppedState) {
+        auto player = static_cast<QMediaPlayer *>(sender());
+        quint32 playerId = player->property("playerId").toUInt();
+        int textCursorPos = player->property("cursorPos").toInt();
+        QTextCursor cursor = itc->findElement(playerId, textCursorPos);
+        if (!cursor.isNull()) {
+            auto audioFormat = AudioMessageFormat::fromCharFormat(cursor.charFormat());
+            audioFormat.setState(audioFormat.state().setFlag(AudioMessageFormat::Playing, false));
+            cursor.setCharFormat(audioFormat);
+        }
+        activePlayers.take(playerId)->deleteLater();
     }
 }
 

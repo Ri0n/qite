@@ -22,6 +22,7 @@ under the License.
 
 #include <QObject>
 #include <QCursor>
+#include <QMediaPlayer>
 
 #include "qite.h"
 
@@ -43,7 +44,7 @@ class ITEAudioController : public InteractiveTextElementController
     int btnRadius;
     int signSize;
     int scaleOutlineWidth;
-    QRectF scaleRect;
+    QRectF scaleRect, scaleFillRect;
     int lastFontSize = 0;
 
 
@@ -63,7 +64,8 @@ protected:
     bool mouseEvent(const InteractiveTextElementController::Event &event,
                     const QRect &rect, QTextCursor &selected);
 private slots:
-    void positionChanged(qint64);
+    void playerPositionChanged(qint64);
+    void playerStateChanged(QMediaPlayer::State);
 };
 
 #endif // ITEAUDIO_H
