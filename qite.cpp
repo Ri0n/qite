@@ -115,17 +115,17 @@ bool InteractiveText::eventFilter(QObject *obj, QEvent *event)
 
     bool ret = false;
     bool leaveHandled = false;
-    QPoint pos;
+    QPoint pos; // relative to visible part.
     if (event->type() == QEvent::MouseButtonPress) {
         pos = static_cast<QMouseEvent*>(event)->pos();
     } else {
         pos = static_cast<QHoverEvent*>(event)->pos();
     }
-    pos += QPoint(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
 
     if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove || event->type() == QEvent::MouseButtonPress)
     {
-        int docLPos = _textEdit->document()->documentLayout()->hitTest( pos, Qt::ExactHit );
+        QPoint viewportOffset(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
+        int docLPos = _textEdit->document()->documentLayout()->hitTest( pos + viewportOffset, Qt::ExactHit );
         if (docLPos != -1) {
             QTextCursor cursor(_textEdit->document());
             cursor.setPosition(docLPos);
@@ -151,8 +151,9 @@ bool InteractiveText::eventFilter(QObject *obj, QEvent *event)
 
                     InteractiveTextElementController::Event iteEvent;
                     iteEvent.qevent = event;
+
                     iteEvent.pos = QPoint(pos.x() - rect.left(), pos.y() - rect.top());
-                    qDebug() << pos << iteEvent.pos << rect;
+                    //qDebug() << "mouse" << pos << "event rel pos" << iteEvent.pos << rect;
                     if (event->type() == QEvent::MouseButtonPress) {
                         iteEvent.type = InteractiveTextElementController::EventType::Click;
                     } else {

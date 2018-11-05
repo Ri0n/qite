@@ -192,12 +192,12 @@ void ITEAudioController::insert(const QUrl &audioSrc)
 
 bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QTextCursor &selected)
 {
+    Q_UNUSED(rect);
     quint32 onButton = false;
     if (event.type != EventType::Leave) {
         onButton = isOnButton(event.pos, bgRect)? AudioMessageFormat::MouseOnButton : 0;
     }
     if (onButton) {
-        qDebug() << "on button";
         _cursor = QCursor(Qt::PointingHandCursor);
     } else {
         _cursor = QCursor(Qt::ArrowCursor);
@@ -213,13 +213,8 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
     }
 
     auto playerId = format.id();
-    if (event.type == EventType::Enter || event.type == EventType::Move) {
-        qDebug() << "inside of player" << playerId << rect;
-
-
-    } else if (event.type == EventType::Click) {
+    if (event.type == EventType::Click) {
         if (onButton) {
-            qDebug() << "playing music!";
             playStateChanged = true;
             state ^= AudioMessageFormat::Playing;
             auto player = activePlayers.value(playerId);
