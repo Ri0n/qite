@@ -55,7 +55,7 @@ public:
     //using InteractiveTextElementController::InteractiveTextElementController;
 
     QSizeF intrinsicSize(QTextDocument *doc, int posInDocument, const QTextFormat &format);
-    void drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format);
+    void drawITE(QPainter *painter, const QRectF &rect, int posInDocument, const QTextFormat &format);
 
 
     void insert(const QUrl &audioSrc);

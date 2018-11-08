@@ -47,6 +47,7 @@ MainWindow::MainWindow(QWidget *parent) :
     while (it.hasNext() && count--)
         files << it.next();
 
+    std::srand(unsigned(std::time(nullptr)));
     std::random_shuffle(files.begin(), files.end());
 
     while (files.size()) {

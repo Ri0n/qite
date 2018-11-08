@@ -132,9 +132,8 @@ void ITEAudioController::updateGeomtry()
     scaleFillRect = scaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2);
 }
 
-void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format)
+void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posInDocument, const QTextFormat &format)
 {
-    Q_UNUSED(doc);
     Q_UNUSED(posInDocument);
     const AudioMessageFormat audioFormat = AudioMessageFormat::fromCharFormat(format.toCharFormat());
 
@@ -179,17 +178,6 @@ void ITEAudioController::drawObject(QPainter *painter, const QRectF &rect, QText
     painter->setBrush(QColor(120,220,120));
     QRectF xScaleRect(scaleRect.translated(rect.topLeft()));
     painter->drawRoundedRect(xScaleRect, scaleRect.height() / 2, scaleRect.height() / 2);
-
-    // fill before runner
-    /*double position = 0; // in 0..1
-    if (isPlaying) {
-        auto player = activePlayers.value(audioFormat.id());
-        if (!player) {
-            qWarning("Player is not found for id=%u", audioFormat.id());
-        } else {
-            position = double(player->position()) / double(player->duration());
-        }
-    }*/
 
     auto playPos = audioFormat.playPosition();
     if (playPos) {
@@ -334,6 +322,7 @@ void ITEAudioController::playerStateChanged(QMediaPlayer::State state)
         if (!cursor.isNull()) {
             auto audioFormat = AudioMessageFormat::fromCharFormat(cursor.charFormat());
             audioFormat.setState(audioFormat.state().setFlag(AudioMessageFormat::Playing, false));
+            audioFormat.setPlayPosition(0);
             cursor.setCharFormat(audioFormat);
         }
         activePlayers.take(playerId)->deleteLater();

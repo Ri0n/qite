@@ -25,6 +25,7 @@ under the License.
 #include <QTextObjectInterface>
 #include <QHoverEvent>
 #include <QScrollBar>
+#include <QDebug>
 
 //----------------------------------//
 // InteractiveTextElementController //
@@ -38,6 +39,14 @@ InteractiveTextElementController::InteractiveTextElementController(InteractiveTe
 InteractiveTextElementController::~InteractiveTextElementController()
 {
     itc->unregisterController(this);
+}
+
+void InteractiveTextElementController::drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format)
+{
+    Q_UNUSED(doc)
+    auto elementId = InteractiveTextFormat::id(format);
+    itc->markVisible(elementId);
+    drawITE(painter, rect, posInDocument, format);
 }
 
 bool InteractiveTextElementController::mouseEvent(const Event &event, const QRect &rect, QTextCursor &selected)
@@ -65,7 +74,9 @@ InteractiveText::InteractiveText(QTextEdit *textEdit, int baseObjectType) :
     textEdit->installEventFilter(this);
     textEdit->viewport()->installEventFilter(this);
 
-    //ui->textEdit->setMouseTracking(true);
+    connect(textEdit->verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int){trackVisibility();}, Qt::QueuedConnection);
+    connect(textEdit->horizontalScrollBar(), &QScrollBar::valueChanged, this, [this](int){trackVisibility();}, Qt::QueuedConnection);
+    connect(textEdit, &QTextEdit::textChanged, this, &InteractiveText::trackVisibility, Qt::QueuedConnection);
 }
 
 int InteractiveText::registerController(InteractiveTextElementController *elementController)
@@ -220,5 +231,26 @@ void InteractiveText::checkAndGenerateLeaveEvent(QEvent *event)
         iteEvent.type = InteractiveTextElementController::EventType::Leave;
 
         controller->mouseEvent(iteEvent, QRect(), cursor);
+    }
+}
+
+void InteractiveText::markVisible(const InteractiveTextFormat::ElementId &id)
+{
+    _visibleElements.insert(id);
+}
+
+void InteractiveText::trackVisibility()
+{
+    qDebug() << "check visibility";
+    QMutableSetIterator<InteractiveTextFormat::ElementId> it(_visibleElements);
+    //QPoint viewportOffset(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
+    //auto startCursor = _textEdit->cursorForPosition(QPoint(0,0));
+
+    while (it.hasNext()) {
+        auto id = it.next();
+        auto cursor = findElement(id);
+        if (!cursor.isNull()) {
+
+        }
     }
 }

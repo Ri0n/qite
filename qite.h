@@ -40,11 +40,16 @@ public:
         UserProperty
     };
 
+    typedef quint32 ElementId;
+
     inline InteractiveTextFormat(int objectType)
     { setObjectType(objectType); }
 
-    inline quint32 id() const
-    { return property(Id).toUInt(); }
+    inline ElementId id() const
+    { return id(*this); }
+
+    static inline ElementId id(const QTextFormat &format)
+    { return format.property(Id).toUInt(); }
 };
 
 class InteractiveTextElementController : public QObject, public QTextObjectInterface
@@ -71,6 +76,10 @@ public:
     virtual ~InteractiveTextElementController();
     virtual QCursor cursor();
 
+    void drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc, int posInDocument, const QTextFormat &format);
+
+    // subclasses should implement drawITE instead of drawObject
+    virtual void drawITE(QPainter *painter, const QRectF &rect, int posInDocument, const QTextFormat &format) = 0;
 protected:
     friend class InteractiveText;
     InteractiveText *itc;
@@ -90,8 +99,11 @@ public:
     void unregisterController(InteractiveTextElementController *elementController);
     quint32 insert(InteractiveTextFormat &fmt);
     QTextCursor findElement(quint32 elementId, int cursorPositionHint = 0);
+    void markVisible(const InteractiveTextFormat::ElementId &id);
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
+private slots:
+    void trackVisibility();
 private:
     QTextEdit *_textEdit = nullptr;
     int _baseObjectType;
@@ -100,6 +112,7 @@ private:
     quint32 _lastElementId; // last which had mouse event
     int _lastCursorPositionHint; // wrt mouse event
     QMap<int,InteractiveTextElementController*> _controllers;
+    QSet<InteractiveTextFormat::ElementId> _visibleElements;
     bool _lastMouseHandled = false;
     void checkAndGenerateLeaveEvent(QEvent *event);
 };
