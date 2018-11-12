@@ -289,6 +289,16 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
     return true;
 }
 
+void ITEAudioController::hideEvent(QTextCursor &selected)
+{
+    auto fmt = AudioMessageFormat::fromCharFormat(selected.charFormat());
+    auto player = activePlayers.value(fmt.id());
+    qDebug() << "hiding player" << fmt.id();
+    if (player) {
+        player->stop();
+    }
+}
+
 bool ITEAudioController::isOnButton(const QPoint &pos, const QRect &rect)
 {
     QPoint rel = pos - rect.topLeft();

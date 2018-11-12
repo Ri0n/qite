@@ -43,7 +43,7 @@ MainWindow::MainWindow(QWidget *parent) :
     auto nameFilters = QStringList() << "*.aac" << "*.flac" << "*.mp3" << "*.ogg" << "*.webm";
     QDirIterator it(musicDir, nameFilters, QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
     QStringList files;
-    int count = 1000;
+    int count = 10;
     while (it.hasNext() && count--)
         files << it.next();
 

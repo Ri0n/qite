@@ -57,6 +57,11 @@ bool InteractiveTextElementController::mouseEvent(const Event &event, const QRec
     return false;
 }
 
+void InteractiveTextElementController::hideEvent(QTextCursor &selected)
+{
+    Q_UNUSED(selected)
+}
+
 QCursor InteractiveTextElementController::cursor()
 {
     return QCursor(Qt::IBeamCursor);
@@ -132,6 +137,11 @@ QTextCursor InteractiveText::findElement(quint32 elementId, int cursorPositionHi
 
 bool InteractiveText::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == _textEdit && event->type() == QEvent::Resize) {
+        trackVisibility();
+        return false;
+    }
+
     bool ourEvent = (obj == _textEdit && (event->type() == QEvent::HoverEnter ||
                                           event->type() == QEvent::HoverMove ||
                                           event->type() == QEvent::HoverLeave)) ||
@@ -241,28 +251,32 @@ void InteractiveText::markVisible(const InteractiveTextFormat::ElementId &id)
 
 void InteractiveText::trackVisibility()
 {
-    qDebug() << "check visibility";
+    //qDebug() << "check visibility";
     QMutableSetIterator<InteractiveTextFormat::ElementId> it(_visibleElements);
     QPoint viewportOffset(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
     //auto startCursor = _textEdit->cursorForPosition(QPoint(0,0));
+    QRect viewPort(QPoint(0,0), _textEdit->viewport()->size());
 
     while (it.hasNext()) {
         auto id = it.next();
-        auto cursor = findElement(id);
+        auto cursor = findElement(id); // FIXME this call is not optimal
         if (!cursor.isNull()) {
             // compute size of elements supposing selection is done from left to right (anchor is on the left)
             QTextCursor anchorCursor(cursor);
-            cursor.movePosition(QTextCursor::Left);
-            int left = _textEdit->cursorRect(anchorCursor).right();
+            anchorCursor.movePosition(QTextCursor::Left);
+            int left = _textEdit->cursorRect(anchorCursor).left();
             auto cr = _textEdit->cursorRect(cursor);
-            int right = cr.left();
+            int right = cr.left() - 1;
             cr.setLeft(left);
             cr.setRight(right-1);
 
             // now we can check if it's still on the screen
-            QRect viewPort(viewportOffset, _textEdit->size());
-            if (viewPort.intersects(cr)) {
-
+            if (!viewPort.intersects(cr)) {
+                auto c = _controllers.value(cursor.charFormat().objectType());
+                if (c) {
+                    c->hideEvent(cursor);
+                    it.remove();
+                }
             }
 
         }

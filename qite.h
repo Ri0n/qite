@@ -86,6 +86,7 @@ protected:
     int objectType;
 
     virtual bool mouseEvent(const Event &event, const QRect &rect, QTextCursor &selected);
+    virtual void hideEvent(QTextCursor &selected);
 };
 
 class InteractiveText : public QObject
@@ -102,6 +103,8 @@ public:
     void markVisible(const InteractiveTextFormat::ElementId &id);
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
+private:
+    void checkAndGenerateLeaveEvent(QEvent *event);
 private slots:
     void trackVisibility();
 private:
@@ -114,7 +117,6 @@ private:
     QMap<int,InteractiveTextElementController*> _controllers;
     QSet<InteractiveTextFormat::ElementId> _visibleElements;
     bool _lastMouseHandled = false;
-    void checkAndGenerateLeaveEvent(QEvent *event);
 };
 
 

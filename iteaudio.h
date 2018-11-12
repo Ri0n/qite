@@ -63,6 +63,7 @@ public:
 protected:
     bool mouseEvent(const InteractiveTextElementController::Event &event,
                     const QRect &rect, QTextCursor &selected);
+    void hideEvent(QTextCursor &selected);
 private slots:
     void playerPositionChanged(qint64);
     void playerStateChanged(QMediaPlayer::State);
