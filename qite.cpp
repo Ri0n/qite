@@ -243,13 +243,27 @@ void InteractiveText::trackVisibility()
 {
     qDebug() << "check visibility";
     QMutableSetIterator<InteractiveTextFormat::ElementId> it(_visibleElements);
-    //QPoint viewportOffset(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
+    QPoint viewportOffset(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
     //auto startCursor = _textEdit->cursorForPosition(QPoint(0,0));
 
     while (it.hasNext()) {
         auto id = it.next();
         auto cursor = findElement(id);
         if (!cursor.isNull()) {
+            // compute size of elements supposing selection is done from left to right (anchor is on the left)
+            QTextCursor anchorCursor(cursor);
+            cursor.movePosition(QTextCursor::Left);
+            int left = _textEdit->cursorRect(anchorCursor).right();
+            auto cr = _textEdit->cursorRect(cursor);
+            int right = cr.left();
+            cr.setLeft(left);
+            cr.setRight(right-1);
+
+            // now we can check if it's still on the screen
+            QRect viewPort(viewportOffset, _textEdit->size());
+            if (viewPort.intersects(cr)) {
+
+            }
 
         }
     }
