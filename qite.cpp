@@ -248,7 +248,7 @@ void InteractiveText::markVisible(const InteractiveTextFormat::ElementId &id)
 {
     _visibleElements.insert(id);
 }
-
+#include <QTextBlock>
 void InteractiveText::trackVisibility()
 {
     //qDebug() << "check visibility";
@@ -257,21 +257,59 @@ void InteractiveText::trackVisibility()
     //auto startCursor = _textEdit->cursorForPosition(QPoint(0,0));
     QRect viewPort(QPoint(0,0), _textEdit->viewport()->size());
 
+    // test...
+//    auto block = _textEdit->document()->findBlockByNumber(0);
+//    if (block.isValid()) {
+//        qDebug() << "block lines" << block.lineCount() << "layout lines" << block.layout()->lineCount();
+//    }
+
+
     while (it.hasNext()) {
         auto id = it.next();
-        auto cursor = findElement(id); // FIXME this call is not optimal
+        auto cursor = findElement(id); // FIXME this call is not optimal. but internally it uses qtextdocument, so it won't slowdoan that much
         if (!cursor.isNull()) {
+            auto controller = _controllers.value(cursor.charFormat().objectType());
+            if (!controller) {
+                continue;
+            }
+
+            bool visible = false;
+
             // compute size of elements supposing selection is done from left to right (anchor is on the left)
             QTextCursor anchorCursor(cursor);
             anchorCursor.movePosition(QTextCursor::Left);
-            int left = _textEdit->cursorRect(anchorCursor).left();
-            auto cr = _textEdit->cursorRect(cursor);
-            int right = cr.left() - 1;
-            cr.setLeft(left);
-            cr.setRight(right-1);
+            auto block = anchorCursor.block();
+            if (block.isValid() && block.isVisible()) {
+                qDebug() << "block pos" << block.position() << "lines" << block.lineCount() << "layout lines" << block.layout()->lineCount();
+                auto pos = anchorCursor.position() - block.position();
+                QTextLine line = block.layout()->lineForTextPosition(pos);
+                if (line.isValid()) {
+                    qDebug() << "  line rect" << line.rect();
+                    auto x = line.cursorToX(pos);
+                    auto s = controller->intrinsicSize(_textEdit->document(), anchorCursor.position(), cursor.charFormat());
+                    QRect cr(QPoint(0,0), s.toSize());
+                    cr.moveBottomLeft(QPoint(x, line.rect().bottom()));
+
+                    cr.translate(_textEdit->document()->documentLayout()->blockBoundingRect(block).topLeft().toPoint());
+                    qDebug() << "  elem rect" << cr;
+                    //cr.moveTopLeft(block.layout()->boundingRect().topLeft().toPoint());
+                    visible = viewPort.intersects(cr);
+                    //line = layout->lineForTextPosition(relativePos);
+                } else { //fallback
+                    qDebug() << "  invalid line";
+                    int left = _textEdit->cursorRect(anchorCursor).left();
+                    auto cr = _textEdit->cursorRect(cursor);
+                    int right = cr.left() - 1;
+                    cr.setLeft(left);
+                    cr.setRight(right-1);
+
+                    visible = viewPort.intersects(cr);
+
+                }
+            }
 
             // now we can check if it's still on the screen
-            if (!viewPort.intersects(cr)) {
+            if (!visible) {
                 auto c = _controllers.value(cursor.charFormat().objectType());
                 if (c) {
                     c->hideEvent(cursor);
