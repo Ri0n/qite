@@ -293,7 +293,7 @@ void ITEAudioController::hideEvent(QTextCursor &selected)
 {
     auto fmt = AudioMessageFormat::fromCharFormat(selected.charFormat());
     auto player = activePlayers.value(fmt.id());
-    qDebug() << "hiding player" << fmt.id();
+    //qDebug() << "hiding player" << fmt.id();
     if (player) {
         player->stop();
     }
