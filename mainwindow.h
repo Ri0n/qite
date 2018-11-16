@@ -34,6 +34,8 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+private slots:
+    void recordMic();
 private:
     Ui::MainWindow *ui;
 };

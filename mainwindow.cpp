@@ -27,6 +27,9 @@ under the License.
 #include <QDir>
 #include <QDirIterator>
 #include <QRandomGenerator>
+#include <QAction>
+#include <QIcon>
+#include <QAudioRecorder>
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -34,6 +37,10 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+
+    auto recordAct = new QAction(QIcon(":/icon/recorder-microphone.png"), "Record", this);
+    ui->mainToolBar->addAction(recordAct);
+    connect(recordAct, &QAction::triggered, this, &MainWindow::recordMic);
 
     auto itc = new InteractiveText(ui->textEdit);
     auto atc = new ITEAudioController(itc);
@@ -62,4 +69,17 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::recordMic()
+{
+    auto recorder = new QAudioRecorder(this);
+    QAudioEncoderSettings audioSettings;
+    audioSettings.setCodec("audio/x-vorbis");
+    audioSettings.setQuality(QMultimedia::HighQuality);
+
+    recorder->setEncodingSettings(audioSettings);
+
+    recorder->setOutputLocation(QUrl::fromLocalFile("test.opus"));
+    recorder->record();
 }
