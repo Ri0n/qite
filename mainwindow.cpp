@@ -30,6 +30,9 @@ under the License.
 #include <QAction>
 #include <QIcon>
 #include <QAudioRecorder>
+#include <QStyle>
+#include <QDateTime>
+#include <QAudioProbe>
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -38,9 +41,9 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    auto recordAct = new QAction(QIcon(":/icon/recorder-microphone.png"), "Record", this);
-    ui->mainToolBar->addAction(recordAct);
-    connect(recordAct, &QAction::triggered, this, &MainWindow::recordMic);
+    recordAction = new QAction(QIcon(":/icon/recorder-microphone.png"), "Record", this);
+    ui->mainToolBar->addAction(recordAction);
+    connect(recordAction, &QAction::triggered, this, &MainWindow::recordMic);
 
     auto itc = new InteractiveText(ui->textEdit);
     auto atc = new ITEAudioController(itc);
@@ -73,13 +76,43 @@ MainWindow::~MainWindow()
 
 void MainWindow::recordMic()
 {
-    auto recorder = new QAudioRecorder(this);
-    QAudioEncoderSettings audioSettings;
-    audioSettings.setCodec("audio/x-vorbis");
-    audioSettings.setQuality(QMultimedia::HighQuality);
+    if (!recorder) {
+        recorder = new QAudioRecorder(this);
+        probe = new QAudioProbe(this);
+        probe->setSource(recorder);
 
-    recorder->setEncodingSettings(audioSettings);
+        QAudioEncoderSettings audioSettings;
+        audioSettings.setCodec("audio/x-vorbis");
+        audioSettings.setQuality(QMultimedia::HighQuality);
 
-    recorder->setOutputLocation(QUrl::fromLocalFile("test.opus"));
-    recorder->record();
+        recorder->setEncodingSettings(audioSettings);
+
+        connect(recorder, &QAudioRecorder::stateChanged, this, [this](){
+            if (recorder->state() == QAudioRecorder::StoppedState) {
+                recordAction->setIcon(QIcon(":/icon/recorder-microphone.png"));
+            }
+            if (recorder->state() == QAudioRecorder::RecordingState) {
+                recordAction->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+            }
+        });
+
+        connect(probe, &QAudioProbe::audioBufferProbed, this, [this](const QAudioBuffer &buffer){
+            auto format = buffer.format();
+
+            if (format.sampleType() == QAudioFormat::SignedInt) {
+                if (format.sampleSize()) {
+
+                }
+            }
+        });
+    }
+
+    if (recorder->state() == QAudioRecorder::StoppedState) {
+        recorder->setOutputLocation(QUrl::fromLocalFile(QString("test-%1.ogg").arg(QDateTime::currentSecsSinceEpoch())));
+        auto reserved = QLatin1String("AMPLDIAGSTART[000,") + QString(",000").repeated(19) + QLatin1String("]AMPLDIAGEND");
+        recorder->setMetaData("ampldiag", reserved);
+        recorder->record();
+    } else {
+        recorder->stop();
+    }
 }

@@ -26,6 +26,9 @@ namespace Ui {
 class MainWindow;
 }
 
+class QAudioRecorder;
+class QAudioProbe;
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -38,6 +41,10 @@ private slots:
     void recordMic();
 private:
     Ui::MainWindow *ui;
+    QAction *recordAction;
+    QAudioRecorder *recorder = nullptr;
+    QAudioProbe *probe;
+
 };
 
 #endif // MAINWINDOW_H
