@@ -23,6 +23,7 @@ under the License.
 #include "iteaudio.h"
 
 #include <algorithm>
+#include <limits>
 #include <QStandardPaths>
 #include <QDir>
 #include <QDirIterator>
@@ -74,6 +75,45 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+template <typename T> struct SoloFrameDefault { enum { Default = 0 }; };
+
+template <typename T> struct SoloFrame {
+
+    SoloFrame()
+        : data(T(SoloFrameDefault<T>::Default))
+    {
+    }
+
+    SoloFrame(T sample)
+        : data(sample)
+    {
+    }
+
+    SoloFrame& operator=(const SoloFrame &other)
+    {
+        data = other.data;
+        return *this;
+    }
+
+    T data;
+
+    T average() const {return data;}
+    void clear() {data = T(SoloFrameDefault<T>::Default);}
+};
+
+template<class T> struct PeakValue { static const T value = std::numeric_limits<T>::max(); };
+
+template<> struct PeakValue <float> { static constexpr float value = float(1.00003); };
+
+template<class T>
+void handle(T data, int count) {
+    auto peakvalue = qreal(PeakValue<decltype(data[0].average())>::value);
+    for (int i=0; i<count; i++) {
+        auto v = int(qreal(qAbs(data[i].average())) / peakvalue * 255.0);
+        qDebug() << peakvalue << v;
+    }
+}
+
 void MainWindow::recordMic()
 {
     if (!recorder) {
@@ -98,11 +138,48 @@ void MainWindow::recordMic()
 
         connect(probe, &QAudioProbe::audioBufferProbed, this, [this](const QAudioBuffer &buffer){
             auto format = buffer.format();
+            if (format.channelCount() > 2) {
+                qWarning("unsupported amount of channels: %d", format.channelCount());
+                return;
+            }
 
             if (format.sampleType() == QAudioFormat::SignedInt) {
-                if (format.sampleSize()) {
-
+                switch (format.sampleSize()) {
+                case 8:
+                    if(format.channelCount() == 2)
+                        handle(buffer.constData<QAudioBuffer::S8S>(), buffer.frameCount());
+                    else
+                        handle(buffer.constData<SoloFrame<signed char>>(), buffer.frameCount());
+                    break;
+                case 16:
+                    if(format.channelCount() == 2)
+                        handle(buffer.constData<QAudioBuffer::S16S>(), buffer.frameCount());
+                    else
+                        handle(buffer.constData<SoloFrame<signed short>>(), buffer.frameCount());
+                    break;
                 }
+            } else if (format.sampleType() == QAudioFormat::UnSignedInt) {
+                switch (format.sampleSize()) {
+                case 8:
+                    if(format.channelCount() == 2)
+                        handle(buffer.constData<QAudioBuffer::S8U>(), buffer.frameCount());
+                    else
+                        handle(buffer.constData<SoloFrame<unsigned char>>(), buffer.frameCount());
+                    break;
+                case 16:
+                    if(format.channelCount() == 2)
+                        handle(buffer.constData<QAudioBuffer::S16U>(), buffer.frameCount());
+                    else
+                        handle(buffer.constData<SoloFrame<unsigned short>>(), buffer.frameCount());
+                    break;
+                }
+            } else if(format.sampleType() == QAudioFormat::Float) {
+                if(format.channelCount() == 2)
+                    handle(buffer.constData<QAudioBuffer::S32F>(), buffer.frameCount());
+                else
+                    handle(buffer.constData<SoloFrame<float>>(), buffer.frameCount());
+            } else {
+                qWarning("unsupported audio sample type: %d", int(format.sampleType()));
             }
         });
     }
