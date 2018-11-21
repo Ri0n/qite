@@ -149,9 +149,12 @@ void MainWindow::recordMic()
                 recordAction->setIcon(QIcon(":/icon/recorder-microphone.png"));
 
                 // compress histogram..
-                qDebug() << "duration" << recorder->duration() << "ms. column size" <<
-                            recorder->duration() / 100 << "ms" <<
-                            "samples per column" << recorder->duration() / 100 / (HistogramQuantumSize / 1000);
+                // divide duration into 100 columns and divide into quantum size in ms.
+                int samplesPerColumn = int(std::ceil(recorder->duration() / 100.0 / (HistogramQuantumSize / 1000.0)));
+                //QStringList columns;
+
+                qDebug() << "duration" << recorder->duration() << "ms." <<
+                            "columns" << recorder->duration() / (samplesPerColumn * HistogramQuantumSize / 1000.0);
                 //for (int i = 0; i < )
 
             }
@@ -213,7 +216,7 @@ void MainWindow::recordMic()
         histogram.clear();
         histogram.reserve(HistogramMemSize);
         recorder->setOutputLocation(QUrl::fromLocalFile(QString("test-%1.ogg").arg(QDateTime::currentSecsSinceEpoch())));
-        auto reserved = QLatin1String("AMPLDIAGSTART[000,") + QString(",000").repeated(19) + QLatin1String("]AMPLDIAGEND");
+        auto reserved = QLatin1String("AMPLDIAGSTART[000,") + QString(",000").repeated(200) + QLatin1String("]AMPLDIAGEND");
         recorder->setMetaData("ampldiag", reserved);
         recorder->record();
     } else {
