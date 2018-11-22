@@ -21,9 +21,8 @@ under the License.
 #include "ui_mainwindow.h"
 #include "qite.h"
 #include "iteaudio.h"
+#include "audiorecorder.h"
 
-#include <algorithm>
-#include <limits>
 #include <QStandardPaths>
 #include <QDir>
 #include <QDirIterator>
@@ -33,7 +32,6 @@ under the License.
 #include <QAudioRecorder>
 #include <QStyle>
 #include <QDateTime>
-#include <QAudioProbe>
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -75,150 +73,23 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-template <typename T> struct SoloFrameDefault { enum { Default = 0 }; };
-
-template <typename T> struct SoloFrame {
-
-    SoloFrame()
-        : data(T(SoloFrameDefault<T>::Default))
-    {
-    }
-
-    SoloFrame(T sample)
-        : data(sample)
-    {
-    }
-
-    SoloFrame& operator=(const SoloFrame &other)
-    {
-        data = other.data;
-        return *this;
-    }
-
-    T data;
-
-    T average() const {return data;}
-    void clear() {data = T(SoloFrameDefault<T>::Default);}
-};
-
-template<class T> struct PeakValue { static const T value = std::numeric_limits<T>::max(); };
-
-template<> struct PeakValue <float> { static constexpr float value = float(1.00003); };
-
-template<class T>
-void handle(const QAudioBuffer &buffer, MainWindow::Quantum &quantum, QByteArray &collector) {
-    const T *data = buffer.constData<T>();
-    auto peakvalue = qreal(PeakValue<decltype(data[0].average())>::value);
-
-    auto format = buffer.format();
-    int countLeft = format.framesForDuration(quantum.timeLeft);
-    Q_ASSERT(countLeft > 0);
-    for (int i=0; i<buffer.frameCount(); i++) {
-        quantum.sum += qreal(qAbs(data[i].average())) / peakvalue;
-        quantum.count++;
-        countLeft--;
-        if (!countLeft) {
-            collector.append(char((quantum.sum / qreal(quantum.count)) * 255));
-            if (collector.size() == collector.capacity()) {
-                collector.reserve(collector.capacity() + MainWindow::HistogramMemSize);
-            }
-            quantum = MainWindow::Quantum();
-            countLeft = format.framesForDuration(quantum.timeLeft);
-        }
-    }
-    if (countLeft) {
-        quantum.timeLeft = format.durationForFrames(countLeft);
-    }
-}
-
 void MainWindow::recordMic()
 {
     if (!recorder) {
-        recorder = new QAudioRecorder(this);
-        probe = new QAudioProbe(this);
-        probe->setSource(recorder);
+        recorder = new AudioRecorder(this);
 
-        QAudioEncoderSettings audioSettings;
-        audioSettings.setCodec("audio/x-vorbis");
-        audioSettings.setQuality(QMultimedia::HighQuality);
-
-        recorder->setEncodingSettings(audioSettings);
-
-        connect(recorder, &QAudioRecorder::stateChanged, this, [this](){
-            if (recorder->state() == QAudioRecorder::StoppedState) {
+        connect(recorder, &AudioRecorder::stateChanged, this, [this](){
+            if (recorder->recorder()->state() == QAudioRecorder::StoppedState) {
                 recordAction->setIcon(QIcon(":/icon/recorder-microphone.png"));
-
-                // compress histogram..
-                // divide duration into 100 columns and divide into quantum size in ms.
-                int samplesPerColumn = int(std::ceil(recorder->duration() / 100.0 / (HistogramQuantumSize / 1000.0)));
-                //QStringList columns;
-
-                qDebug() << "duration" << recorder->duration() << "ms." <<
-                            "columns" << recorder->duration() / (samplesPerColumn * HistogramQuantumSize / 1000.0);
-                //for (int i = 0; i < )
-
             }
-            if (recorder->state() == QAudioRecorder::RecordingState) {
+            if (recorder->recorder()->state() == QAudioRecorder::RecordingState) {
                 recordAction->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
-            }
-        });
-
-        connect(probe, &QAudioProbe::audioBufferProbed, this, [this](const QAudioBuffer &buffer){
-            auto format = buffer.format();
-            if (format.channelCount() > 2) {
-                qWarning("unsupported amount of channels: %d", format.channelCount());
-                return;
-            }
-
-            if (format.sampleType() == QAudioFormat::SignedInt) {
-                switch (format.sampleSize()) {
-                case 8:
-                    if(format.channelCount() == 2)
-                        handle<QAudioBuffer::S8S>(buffer, quantum, histogram);
-                    else
-                        handle<SoloFrame<signed char>>(buffer, quantum, histogram);
-                    break;
-                case 16:
-                    if(format.channelCount() == 2)
-                        handle<QAudioBuffer::S16S>(buffer, quantum, histogram);
-                    else
-                        handle<SoloFrame<signed short>>(buffer, quantum, histogram);
-                    break;
-                }
-            } else if (format.sampleType() == QAudioFormat::UnSignedInt) {
-                switch (format.sampleSize()) {
-                case 8:
-                    if(format.channelCount() == 2)
-                        handle<QAudioBuffer::S8U>(buffer, quantum, histogram);
-                    else
-                        handle<SoloFrame<unsigned char>>(buffer, quantum, histogram);
-                    break;
-                case 16:
-                    if(format.channelCount() == 2)
-                        handle<QAudioBuffer::S16U>(buffer, quantum, histogram);
-                    else
-                        handle<SoloFrame<unsigned short>>(buffer, quantum, histogram);
-                    break;
-                }
-            } else if(format.sampleType() == QAudioFormat::Float) {
-                if(format.channelCount() == 2)
-                    handle<QAudioBuffer::S32F>(buffer, quantum, histogram);
-                else
-                    handle<SoloFrame<float>>(buffer, quantum, histogram);
-            } else {
-                qWarning("unsupported audio sample type: %d", int(format.sampleType()));
             }
         });
     }
 
-    if (recorder->state() == QAudioRecorder::StoppedState) {
-        quantum = Quantum();
-        histogram.clear();
-        histogram.reserve(HistogramMemSize);
-        recorder->setOutputLocation(QUrl::fromLocalFile(QString("test-%1.ogg").arg(QDateTime::currentSecsSinceEpoch())));
-        auto reserved = QLatin1String("AMPLDIAGSTART[000,") + QString(",000").repeated(200) + QLatin1String("]AMPLDIAGEND");
-        recorder->setMetaData("ampldiag", reserved);
-        recorder->record();
+    if (recorder->recorder()->state() == QAudioRecorder::StoppedState) {
+        recorder->record(QString("test-%1.ogg").arg(QDateTime::currentSecsSinceEpoch()));
     } else {
         recorder->stop();
     }

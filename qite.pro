@@ -5,7 +5,7 @@
 #-------------------------------------------------
 
 QT       += core gui multimedia
-CONFIG += c++11
+CONFIG += c++14
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -28,12 +28,14 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     qite.cpp \
-    iteaudio.cpp
+    iteaudio.cpp \
+    audiorecorder.cpp
 
 HEADERS += \
     mainwindow.h \
     qite.h \
-    iteaudio.h
+    iteaudio.h \
+    audiorecorder.h
 
 FORMS += \
         mainwindow.ui

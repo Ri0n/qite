@@ -26,23 +26,12 @@ namespace Ui {
 class MainWindow;
 }
 
-class QAudioRecorder;
-class QAudioProbe;
-
+class AudioRecorder;
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-
-    static const qint64 HistogramQuantumSize = 10000; // 10ms. 100 values per second
-    static const int HistogramMemSize = int(1e6) / HistogramQuantumSize * 20; // for 20 secs. ~ 2Kb
-
-    struct Quantum {
-        qint64 timeLeft = HistogramQuantumSize; // to generate next value for aplitude histogram
-        qreal sum = 0.0;
-        int count = 0;
-    };
 
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
@@ -52,10 +41,7 @@ private slots:
 private:
     Ui::MainWindow *ui;
     QAction *recordAction;
-    QAudioRecorder *recorder = nullptr;
-    QAudioProbe *probe;
-    Quantum quantum;
-    QByteArray histogram;
+    AudioRecorder *recorder = nullptr;
 };
 
 #endif // MAINWINDOW_H
