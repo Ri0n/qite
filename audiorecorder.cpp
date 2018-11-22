@@ -70,7 +70,8 @@ void handle(const QAudioBuffer &buffer, AudioRecorder::Quantum &quantum, QByteAr
         quantum.count++;
         countLeft--;
         if (!countLeft) {
-            collector.append(char((quantum.sum / qreal(quantum.count)) * 255));
+            //qDebug() << int((quantum.sum / qreal(quantum.count)) * 255.0);
+            collector.append(char((quantum.sum / qreal(quantum.count)) * 255.0));
             if (collector.size() == collector.capacity()) {
                 collector.reserve(collector.capacity() + AudioRecorder::HistogramMemSize);
             }
@@ -102,12 +103,28 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
             // compress histogram..
             // divide duration into 100 columns and divide into quantum size in ms.
             int samplesPerColumn = int(std::ceil(_recorder->duration() / 100.0 / (HistogramQuantumSize / 1000.0)));
-            //QStringList columns;
+            Q_ASSERT(samplesPerColumn);
+
+            QStringList columns;
 
             qDebug() << "duration" << _recorder->duration() << "ms." <<
+                        "samples per column" << samplesPerColumn <<
                         "columns" << _recorder->duration() / (samplesPerColumn * HistogramQuantumSize / 1000.0);
-            //for (int i = 0; i < )
-
+            int sum = 0;
+            int count = 0;
+            for (int i = 0; i < histogram.size(); i++) {
+                sum += quint8(histogram[i]);
+                count++;
+                if (count == samplesPerColumn) {
+                    columns.append(QString::number(int(sum / double(count))));
+                    sum = 0;
+                    count = 0;
+                }
+            }
+            if (count) {
+                columns.append(QString::number(int(sum / double(count))));
+            }
+            qDebug() << columns;
         }
         emit stateChanged();
     });
