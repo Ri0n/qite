@@ -207,7 +207,6 @@ void AudioRecorder::record(const QString &fileName)
     if (_recorder->isMetaDataWritable()) {
         auto reserved = QLatin1String("AMPLDIAGSTART[000") + QString(",000").repeated(200) + QLatin1String("]AMPLDIAGEND");
         _recorder->setMetaData(QMediaMetaData::Comment, reserved);
-        qDebug() << _recorder->metaData(QMediaMetaData::Comment).toString();
     }
     _recorder->record();
 }

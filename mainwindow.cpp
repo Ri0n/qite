@@ -45,7 +45,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(recordAction, &QAction::triggered, this, &MainWindow::recordMic);
 
     auto itc = new InteractiveText(ui->textEdit);
-    auto atc = new ITEAudioController(itc);
+    atc = new ITEAudioController(itc);
 
     auto musicDir = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
 
@@ -81,6 +81,7 @@ void MainWindow::recordMic()
         connect(recorder, &AudioRecorder::stateChanged, this, [this](){
             if (recorder->recorder()->state() == QAudioRecorder::StoppedState) {
                 recordAction->setIcon(QIcon(":/icon/recorder-microphone.png"));
+                atc->insert(QUrl::fromLocalFile(QFileInfo(recorder->recorder()->outputLocation().toLocalFile()).absoluteFilePath()));
             }
             if (recorder->recorder()->state() == QAudioRecorder::RecordingState) {
                 recordAction->setIcon(style()->standardIcon(QStyle::SP_MediaStop));

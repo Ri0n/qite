@@ -27,6 +27,8 @@ class MainWindow;
 }
 
 class AudioRecorder;
+class ITEAudioController;
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -42,6 +44,7 @@ private:
     Ui::MainWindow *ui;
     QAction *recordAction;
     AudioRecorder *recorder = nullptr;
+    ITEAudioController *atc;
 };
 
 #endif // MAINWINDOW_H
