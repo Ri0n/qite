@@ -23,7 +23,10 @@ under the License.
 
 #include <QAudioProbe>
 #include <QAudioRecorder>
+#include <QByteArray>
 #include <QDateTime>
+#include <QFile>
+#include <QMediaMetaData>
 #include <QUrl>
 
 
@@ -98,11 +101,10 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
     _recorder->setEncodingSettings(audioSettings);
 
     connect(_recorder, &QAudioRecorder::stateChanged, this, [this](){
-        if (_recorder->state() == QAudioRecorder::StoppedState) {
-
+        if (_recorder->state() == QAudioRecorder::StoppedState && _recorder->duration()) {
             // compress histogram..
             // divide duration into 100 columns and divide into quantum size in ms.
-            int samplesPerColumn = int(std::ceil(_recorder->duration() / 100.0 / (HistogramQuantumSize / 1000.0)));
+            int samplesPerColumn = int(std::ceil(_recorder->duration() / 100.0 / (HistogramQuantumSize / 1000.0)) + 0.1);
             Q_ASSERT(samplesPerColumn);
 
             QStringList columns;
@@ -124,7 +126,26 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
             if (count) {
                 columns.append(QString::number(int(sum / double(count))));
             }
-            qDebug() << columns;
+            //qDebug() << columns.join(",");
+            histogram.clear();
+            histogram.squeeze();
+            QFile f(_recorder->outputLocation().toLocalFile());
+            QByteArray buffer;
+            buffer.resize(4096);
+            if (f.open(QIODevice::ReadWrite)) {
+                qint64 bytes;
+                while ((bytes = f.read(buffer.data(), qint64(buffer.size()))) > 0) {
+                    auto index = QByteArray::fromRawData(buffer.data(), int(bytes)).indexOf("AMPLDIAGSTART");
+                    if (index >= 0) {
+                        f.seek(f.pos() - buffer.size() + index + int(sizeof("AMPLDIAGSTART")));
+                        f.write(columns.join(",").toLatin1());
+                        f.write("]AMPLDIAGEND");
+                        f.flush();
+                        break;
+                    }
+                }
+                f.close();
+            }
         }
         emit stateChanged();
     });
@@ -183,8 +204,11 @@ void AudioRecorder::record(const QString &fileName)
     histogram.clear();
     histogram.reserve(HistogramMemSize);
     _recorder->setOutputLocation(QUrl::fromLocalFile(fileName));
-    auto reserved = QLatin1String("AMPLDIAGSTART[000,") + QString(",000").repeated(200) + QLatin1String("]AMPLDIAGEND");
-    _recorder->setMetaData("ampldiag", reserved);
+    if (_recorder->isMetaDataWritable()) {
+        auto reserved = QLatin1String("AMPLDIAGSTART[000") + QString(",000").repeated(200) + QLatin1String("]AMPLDIAGEND");
+        _recorder->setMetaData(QMediaMetaData::Comment, reserved);
+        qDebug() << _recorder->metaData(QMediaMetaData::Comment).toString();
+    }
     _recorder->record();
 }
 
