@@ -61,7 +61,7 @@ template<class T> struct PeakValue { static const T value = std::numeric_limits<
 template<> struct PeakValue <float> { static constexpr float value = float(1.00003); };
 
 template<class T>
-void handle(const QAudioBuffer &buffer, AudioRecorder::Quantum &quantum, QByteArray &collector) {
+void handle(const QAudioBuffer &buffer, AudioRecorder::Quantum &quantum, QByteArray &collector, quint8 &maxVal) {
     const T *data = buffer.constData<T>();
     auto peakvalue = qreal(PeakValue<decltype(data[0].average())>::value);
 
@@ -73,8 +73,12 @@ void handle(const QAudioBuffer &buffer, AudioRecorder::Quantum &quantum, QByteAr
         quantum.count++;
         countLeft--;
         if (!countLeft) {
+            auto value = quint8((quantum.sum / qreal(quantum.count)) * 255.0);
+            if (value > maxVal) {
+                maxVal = value;
+            }
             //qDebug() << int((quantum.sum / qreal(quantum.count)) * 255.0);
-            collector.append(char((quantum.sum / qreal(quantum.count)) * 255.0));
+            collector.append(char(value));
             if (collector.size() == collector.capacity()) {
                 collector.reserve(collector.capacity() + AudioRecorder::HistogramMemSize);
             }
@@ -103,30 +107,24 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
     connect(_recorder, &QAudioRecorder::stateChanged, this, [this](){
         if (_recorder->state() == QAudioRecorder::StoppedState && _recorder->duration()) {
             // compress histogram..
-            // divide duration into 100 columns and divide into quantum size in ms.
-            int samplesPerColumn = int(std::ceil(_recorder->duration() / 100.0 / (HistogramQuantumSize / 1000.0)) + 0.1);
-            Q_ASSERT(samplesPerColumn);
-
+            auto volumeK = 255.0 / double(_maxVolume); // amplificator
+            auto step = histogram.size() / 100.0;
             QStringList columns;
-
-            qDebug() << "duration" << _recorder->duration() << "ms." <<
-                        "samples per column" << samplesPerColumn <<
-                        "columns" << _recorder->duration() / (samplesPerColumn * HistogramQuantumSize / 1000.0);
-            int sum = 0;
-            int count = 0;
-            for (int i = 0; i < histogram.size(); i++) {
-                sum += quint8(histogram[i]);
-                count++;
-                if (count == samplesPerColumn) {
-                    columns.append(QString::number(int(sum / double(count))));
-                    sum = 0;
-                    count = 0;
+            for (int i = 0; i < 100; i++) {
+                int prev = int(step * i);
+                int curr = int(step * (i + 1));
+                if (curr == histogram.size()) {
+                    curr = histogram.size() - 1;
                 }
+
+                int sum = 0;
+                for (int j = prev; j <= curr; j++) {
+                    sum += quint8(histogram[j]);
+                }
+                columns.append(QString::number(int(sum / double(curr - prev + 1) * volumeK)));
             }
-            if (count) {
-                columns.append(QString::number(int(sum / double(count))));
-            }
-            //qDebug() << columns.join(",");
+
+            qDebug() << columns.join(",");
             histogram.clear();
             histogram.squeeze();
             QFile f(_recorder->outputLocation().toLocalFile());
@@ -161,37 +159,37 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
             switch (format.sampleSize()) {
             case 8:
                 if(format.channelCount() == 2)
-                    handle<QAudioBuffer::S8S>(buffer, quantum, histogram);
+                    handle<QAudioBuffer::S8S>(buffer, quantum, histogram, _maxVolume);
                 else
-                    handle<SoloFrame<signed char>>(buffer, quantum, histogram);
+                    handle<SoloFrame<signed char>>(buffer, quantum, histogram, _maxVolume);
                 break;
             case 16:
                 if(format.channelCount() == 2)
-                    handle<QAudioBuffer::S16S>(buffer, quantum, histogram);
+                    handle<QAudioBuffer::S16S>(buffer, quantum, histogram, _maxVolume);
                 else
-                    handle<SoloFrame<signed short>>(buffer, quantum, histogram);
+                    handle<SoloFrame<signed short>>(buffer, quantum, histogram, _maxVolume);
                 break;
             }
         } else if (format.sampleType() == QAudioFormat::UnSignedInt) {
             switch (format.sampleSize()) {
             case 8:
                 if(format.channelCount() == 2)
-                    handle<QAudioBuffer::S8U>(buffer, quantum, histogram);
+                    handle<QAudioBuffer::S8U>(buffer, quantum, histogram, _maxVolume);
                 else
-                    handle<SoloFrame<unsigned char>>(buffer, quantum, histogram);
+                    handle<SoloFrame<unsigned char>>(buffer, quantum, histogram, _maxVolume);
                 break;
             case 16:
                 if(format.channelCount() == 2)
-                    handle<QAudioBuffer::S16U>(buffer, quantum, histogram);
+                    handle<QAudioBuffer::S16U>(buffer, quantum, histogram, _maxVolume);
                 else
-                    handle<SoloFrame<unsigned short>>(buffer, quantum, histogram);
+                    handle<SoloFrame<unsigned short>>(buffer, quantum, histogram, _maxVolume);
                 break;
             }
         } else if(format.sampleType() == QAudioFormat::Float) {
             if(format.channelCount() == 2)
-                handle<QAudioBuffer::S32F>(buffer, quantum, histogram);
+                handle<QAudioBuffer::S32F>(buffer, quantum, histogram, _maxVolume);
             else
-                handle<SoloFrame<float>>(buffer, quantum, histogram);
+                handle<SoloFrame<float>>(buffer, quantum, histogram, _maxVolume);
         } else {
             qWarning("unsupported audio sample type: %d", int(format.sampleType()));
         }
@@ -203,6 +201,7 @@ void AudioRecorder::record(const QString &fileName)
     quantum = Quantum();
     histogram.clear();
     histogram.reserve(HistogramMemSize);
+    _maxVolume = 0;
     _recorder->setOutputLocation(QUrl::fromLocalFile(fileName));
     if (_recorder->isMetaDataWritable()) {
         auto reserved = QLatin1String("AMPLDIAGSTART[000") + QString(",000").repeated(200) + QLatin1String("]AMPLDIAGEND");

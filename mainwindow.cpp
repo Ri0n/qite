@@ -81,7 +81,11 @@ void MainWindow::recordMic()
         connect(recorder, &AudioRecorder::stateChanged, this, [this](){
             if (recorder->recorder()->state() == QAudioRecorder::StoppedState) {
                 recordAction->setIcon(QIcon(":/icon/recorder-microphone.png"));
-                atc->insert(QUrl::fromLocalFile(QFileInfo(recorder->recorder()->outputLocation().toLocalFile()).absoluteFilePath()));
+                if (recorder->maxValue() / double(std::numeric_limits<decltype(recorder->maxValue())>::max()) > 0.1) {
+                    atc->insert(QUrl::fromLocalFile(QFileInfo(recorder->recorder()->outputLocation().toLocalFile()).absoluteFilePath()));
+                } else {
+                    ui->textEdit->append("Prefer silence?");
+                }
             }
             if (recorder->recorder()->state() == QAudioRecorder::RecordingState) {
                 recordAction->setIcon(style()->standardIcon(QStyle::SP_MediaStop));

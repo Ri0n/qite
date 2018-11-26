@@ -33,7 +33,15 @@ public:
     enum Property {
         Url =           InteractiveTextFormat::UserProperty,
         PlayPosition, /* in pixels */
-        State
+        State,
+        MetadataState,
+        Metadata
+    };
+
+    enum MDState {
+        NotRequested,
+        RequestInProgress,
+        Finished
     };
 
     enum Flag {
@@ -52,6 +60,9 @@ public:
     void setPlayPosition(quint32 position);
 
     QUrl url() const;
+
+    QVariant metadata() const;
+    MDState metadataState() const;
 
     static AudioMessageFormat fromCharFormat(const QTextCharFormat &fmt) { return AudioMessageFormat(fmt); }
 };
@@ -90,6 +101,16 @@ QUrl AudioMessageFormat::url() const
     return property(AudioMessageFormat::Url).value<QUrl>();
 }
 
+QVariant AudioMessageFormat::metadata() const
+{
+    return property(AudioMessageFormat::Metadata);
+}
+
+AudioMessageFormat::MDState AudioMessageFormat::metadataState() const
+{
+    return AudioMessageFormat::MDState(property(AudioMessageFormat::MetadataState).value<int>());
+}
+
 //----------------------------------------------------------------------------
 // ITEAudioController
 //----------------------------------------------------------------------------
@@ -100,12 +121,12 @@ QSizeF ITEAudioController::intrinsicSize(QTextDocument *doc, int posInDocument, 
     const QTextCharFormat charFormat = format.toCharFormat();
     if (lastFontSize != charFormat.font().pixelSize()) {
         lastFontSize = charFormat.font().pixelSize();
-        updateGeomtry();
+        updateGeomtry(AudioMessageFormat::fromCharFormat(charFormat));
     }
     return elementSize;
 }
 
-void ITEAudioController::updateGeomtry()
+void ITEAudioController::updateGeomtry(const AudioMessageFormat &format)
 {
     // compute geomtry of player
     bgOutlineWidth = lastFontSize / 12;
@@ -124,10 +145,16 @@ void ITEAudioController::updateGeomtry()
 
     signSize = btnRadius / 2;
 
+    // next to the button we need histgram/title and scale.
+    int left = bgRect.left() + bgRect.height() + bgRect.height() / 10;
+    int right = bgRect.right() - bgRect.height() / 5;
+    
+    metaRect = QRect(QPoint(left, bgRect.top() + bgOutlineWidth * 3), QPoint(right, bgRect.top() + bgOutlineWidth * 15));
+
     // draw scale
     scaleOutlineWidth = bgOutlineWidth;
-    QPointF scaleTopLeft = bgRect.topLeft() + QPointF(bgRect.height() + bgRect.height() / 10, bgRect.height() * 0.7);
-    QPointF scaleBottomRight(bgRect.right() - bgRect.height() / 5, scaleTopLeft.y() + bgRect.height() / 10);
+    QPointF scaleTopLeft(left, metaRect.bottom() + bgOutlineWidth * 3); // = bgRect.topLeft() + QPointF(left, bgRect.height() * 0.7);
+    QPointF scaleBottomRight(right, scaleTopLeft.y() + bgRect.height() / 10);
     scaleRect = QRectF(scaleTopLeft, scaleBottomRight);
     scaleFillRect = scaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2);
 }
@@ -186,6 +213,22 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
         QRectF playedRect(scaleFillRect.translated(rect.topLeft())); // to the width of the scale border
         playedRect.setWidth(playPos);
         painter->drawRoundedRect(playedRect, playedRect.height() / 2, playedRect.height() / 2);
+    }
+
+    auto mdState = audioFormat.metadataState();
+    if (mdState != AudioMessageFormat::Finished) {
+        if (!autoFetchMetadata || mdState == AudioMessageFormat::RequestInProgress) {
+            return;
+        }
+    }
+
+    auto hg = audioFormat.metadata();
+    if (hg.type() == QVariant::ByteArray) {
+        // histogram
+
+        for (auto b : hg.toByteArray()) {
+
+        }
     }
 
     // runner

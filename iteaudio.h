@@ -27,6 +27,7 @@ under the License.
 #include "qite.h"
 
 class QMediaPlayer;
+class AudioMessageFormat;
 
 class ITEAudioController : public InteractiveTextElementController
 {
@@ -38,6 +39,7 @@ class ITEAudioController : public InteractiveTextElementController
     // geometry
     QSize elementSize;
     QRect bgRect;
+    QRect metaRect;
     int bgOutlineWidth;
     double bgRectRadius;
     QPointF btnCenter;
@@ -46,20 +48,22 @@ class ITEAudioController : public InteractiveTextElementController
     int scaleOutlineWidth;
     QRectF scaleRect, scaleFillRect;
     int lastFontSize = 0;
+    bool autoFetchMetadata = false;
 
 
     bool isOnButton(const QPoint &pos, const QRect &rect);
-    void updateGeomtry();
+    void updateGeomtry(const AudioMessageFormat &format);
 public:
     ITEAudioController(InteractiveText *itc);
-    //using InteractiveTextElementController::InteractiveTextElementController;
 
     QSizeF intrinsicSize(QTextDocument *doc, int posInDocument, const QTextFormat &format);
     void drawITE(QPainter *painter, const QRectF &rect, int posInDocument, const QTextFormat &format);
 
 
-    void insert(const QUrl &audioSrc);
-    QCursor cursor();
+    void insert(const QUrl &audioSrc); // add new media to textedit
+    QCursor cursor(); // cursor form after last mose events
+
+    void setAutoFetchMetadata(bool fetch = true);
 protected:
     bool mouseEvent(const InteractiveTextElementController::Event &event,
                     const QRect &rect, QTextCursor &selected);
