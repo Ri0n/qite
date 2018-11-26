@@ -41,6 +41,7 @@ class ITEAudioController : public InteractiveTextElementController
     QRect bgRect;
     QRect metaRect;
     int bgOutlineWidth;
+    double baseSize;
     double bgRectRadius;
     QPointF btnCenter;
     int btnRadius;
@@ -52,7 +53,7 @@ class ITEAudioController : public InteractiveTextElementController
 
 
     bool isOnButton(const QPoint &pos, const QRect &rect);
-    void updateGeomtry(const AudioMessageFormat &format);
+    void updateGeomtry();
 public:
     ITEAudioController(InteractiveText *itc);
 

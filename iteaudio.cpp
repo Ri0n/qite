@@ -119,42 +119,50 @@ QSizeF ITEAudioController::intrinsicSize(QTextDocument *doc, int posInDocument, 
     Q_UNUSED(doc);
     Q_UNUSED(posInDocument)
     const QTextCharFormat charFormat = format.toCharFormat();
-    if (lastFontSize != charFormat.font().pixelSize()) {
-        lastFontSize = charFormat.font().pixelSize();
-        updateGeomtry(AudioMessageFormat::fromCharFormat(charFormat));
+    auto psize = QFontMetrics(charFormat.font()).height();
+    if (lastFontSize != psize) {
+        lastFontSize = psize;
+        updateGeomtry();
     }
     return elementSize;
 }
 
-void ITEAudioController::updateGeomtry(const AudioMessageFormat &format)
+void ITEAudioController::updateGeomtry()
 {
     // compute geomtry of player
-    bgOutlineWidth = lastFontSize / 12;
-    if (bgOutlineWidth < 2) {
-        bgOutlineWidth = 2;
+    baseSize = lastFontSize / 12.0;
+    int elementPadding = int(baseSize * 4);
+
+    bgOutlineWidth = baseSize < 2? 2 : int(baseSize);
+
+    btnRadius = int(baseSize * 9);
+    int elementHeight = btnRadius * 2 + int(elementPadding * 2);
+
+    int histogramColumnWidth = qRound(baseSize * 2);
+    if (!histogramColumnWidth) {
+        histogramColumnWidth = 1;
     }
 
-    elementSize = QSize(bgOutlineWidth * 100, bgOutlineWidth * 25);
+    elementSize = QSize(elementHeight + histogramColumnWidth * 100 + elementPadding, elementHeight);
+
     bgRect = QRect(QPoint(0,0), elementSize);
-    bgRect.adjust(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2);
+    bgRect.adjust(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2); // outline should fit the format rect.
     bgRectRadius = bgRect.height() / 5;
 
-    btnRadius = int(bgRect.height()) / 2;
-    btnCenter = bgRect.topLeft() + QPoint(btnRadius, btnRadius);
-    btnRadius -= 4;
+    btnCenter = QPoint(elementSize.height() / 2, elementSize.height() / 2);
 
     signSize = btnRadius / 2;
 
     // next to the button we need histgram/title and scale.
-    int left = bgRect.left() + bgRect.height() + bgRect.height() / 10;
-    int right = bgRect.right() - bgRect.height() / 5;
+    int left = elementHeight;
+    int right = elementSize.width() - elementPadding;
     
-    metaRect = QRect(QPoint(left, bgRect.top() + bgOutlineWidth * 3), QPoint(right, bgRect.top() + bgOutlineWidth * 15));
+    metaRect = QRect(QPoint(left, bgRect.top() + int(baseSize * 3)), QPoint(right, bgRect.top() + int(bgRect.height() * 0.6)));
 
     // draw scale
     scaleOutlineWidth = bgOutlineWidth;
-    QPointF scaleTopLeft(left, metaRect.bottom() + bgOutlineWidth * 3); // = bgRect.topLeft() + QPointF(left, bgRect.height() * 0.7);
-    QPointF scaleBottomRight(right, scaleTopLeft.y() + bgRect.height() / 10);
+    QPointF scaleTopLeft(left, metaRect.bottom() + baseSize * 2); // = bgRect.topLeft() + QPointF(left, bgRect.height() * 0.7);
+    QPointF scaleBottomRight(right, scaleTopLeft.y() + baseSize * 4);
     scaleRect = QRectF(scaleTopLeft, scaleBottomRight);
     scaleFillRect = scaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2);
 }
@@ -239,6 +247,7 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
 void ITEAudioController::insert(const QUrl &audioSrc)
 {
     AudioMessageFormat fmt(objectType, audioSrc);
+    fmt.setFontPointSize(itc->textEdit()->currentFont().pointSize());
     itc->insert(fmt);
 }
 

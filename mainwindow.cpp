@@ -32,6 +32,7 @@ under the License.
 #include <QAudioRecorder>
 #include <QStyle>
 #include <QDateTime>
+#include <QComboBox>
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -43,6 +44,17 @@ MainWindow::MainWindow(QWidget *parent) :
     recordAction = new QAction(QIcon(":/icon/recorder-microphone.png"), "Record", this);
     ui->mainToolBar->addAction(recordAction);
     connect(recordAction, &QAction::triggered, this, &MainWindow::recordMic);
+
+    auto fontCombo = new QComboBox(this);
+    for (int i = 8; i < 26; i++) {
+        fontCombo->addItem(QString::number(i));
+        auto comboAct = ui->mainToolBar->addWidget(fontCombo);
+        fontCombo->setCurrentText(QString::number(ui->textEdit->fontPointSize()));
+        comboAct->setVisible(true);
+        connect(fontCombo, &QComboBox::currentTextChanged, this, [this](const QString &text){
+            ui->textEdit->setFontPointSize(text.toInt());
+        });
+    }
 
     auto itc = new InteractiveText(ui->textEdit);
     atc = new ITEAudioController(itc);
