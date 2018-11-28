@@ -93,7 +93,7 @@ void MainWindow::recordMic()
         connect(recorder, &AudioRecorder::stateChanged, this, [this](){
             if (recorder->recorder()->state() == QAudioRecorder::StoppedState) {
                 recordAction->setIcon(QIcon(":/icon/recorder-microphone.png"));
-                if (recorder->maxValue() / double(std::numeric_limits<decltype(recorder->maxValue())>::max()) > 0.1) {
+                if (recorder->maxVolume() / double(std::numeric_limits<decltype(recorder->maxVolume())>::max()) > 0.1) {
                     atc->insert(QUrl::fromLocalFile(QFileInfo(recorder->recorder()->outputLocation().toLocalFile()).absoluteFilePath()));
                 } else {
                     ui->textEdit->append("Prefer silence?");
@@ -106,7 +106,7 @@ void MainWindow::recordMic()
     }
 
     if (recorder->recorder()->state() == QAudioRecorder::StoppedState) {
-        recorder->record(QString("test-%1.ogg").arg(QDateTime::currentSecsSinceEpoch()));
+        recorder->record(QString("test-%1.mka").arg(QDateTime::currentSecsSinceEpoch()));
     } else {
         recorder->stop();
     }

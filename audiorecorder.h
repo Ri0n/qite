@@ -43,7 +43,7 @@ public:
     void stop();
 
     inline auto recorder() const { return _recorder; }
-    inline auto maxValue() const { return _maxVolume; } // peak value of vlume over all the recording.
+    inline auto maxVolume() const { return _maxVolume; } // peak value of vlume over all the recording.
 
 signals:
     void stateChanged();

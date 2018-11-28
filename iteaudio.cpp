@@ -26,6 +26,7 @@ under the License.
 #include <QHoverEvent>
 #include <QMediaPlayer>
 #include <QTimer>
+#include <QMediaMetaData>
 
 class AudioMessageFormat : public InteractiveTextFormat
 {
@@ -143,7 +144,7 @@ void ITEAudioController::updateGeomtry()
         histogramColumnWidth = 1;
     }
 
-    elementSize = QSize(elementHeight + histogramColumnWidth * 100 + elementPadding, elementHeight);
+    elementSize = QSize(elementHeight + histogramColumnWidth * HistogramCompressedSize + elementPadding, elementHeight);
 
     bgRect = QRect(QPoint(0,0), elementSize);
     bgRect.adjust(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2); // outline should fit the format rect.
@@ -301,6 +302,25 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                             });
                         });
                     }
+
+                    connect(player, &QMediaPlayer::metaDataAvailableChanged, this, [this, player](bool available){
+                        if (available) {
+                            qDebug() << "title:" << player->metaData(QMediaMetaData::Title).toString();
+                        }
+                    });
+
+                    connect(player, QOverload<const QString &, const QVariant &>::of(&QMediaPlayer::metaDataChanged),
+                          [=](const QString &key, const QVariant &value){
+                        if (key == QMediaMetaData::Comment) {
+                            QString comment(value.toString());
+                            if (comment.startsWith(QLatin1String("AMPLDIAGSTART"))) {
+                                int index = comment.indexOf("AMPLDIAGEND");
+                                if (index != -1) {
+                                    qDebug() << "histogram:" << comment.mid(sizeof("AMPLDIAGSTART"), index - sizeof("AMPLDIAGSTART") - 1);
+                                }
+                            }
+                        }
+                    });
 
                     connect(player, SIGNAL(stateChanged(QMediaPlayer::State)), this, SLOT(playerStateChanged(QMediaPlayer::State)));
 

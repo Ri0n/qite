@@ -55,6 +55,8 @@ class ITEAudioController : public InteractiveTextElementController
     bool isOnButton(const QPoint &pos, const QRect &rect);
     void updateGeomtry();
 public:
+    static const int HistogramCompressedSize = 100; // amount of drawn columns
+
     ITEAudioController(InteractiveText *itc);
 
     QSizeF intrinsicSize(QTextDocument *doc, int posInDocument, const QTextFormat &format);

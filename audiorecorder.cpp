@@ -18,6 +18,7 @@ under the License.
 */
 
 #include "audiorecorder.h"
+#include "iteaudio.h"
 
 #include <cmath>
 
@@ -95,22 +96,29 @@ void handle(const QAudioBuffer &buffer, AudioRecorder::Quantum &quantum, QByteAr
 AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
 {
     _recorder = new QAudioRecorder(this);
+    qDebug() << "supported codecs for recorder:" << _recorder->supportedAudioCodecs();
+    qDebug() << "supported containers for recorder:" << _recorder->supportedContainers();
+    _recorder->setContainerFormat("audio/x-matroska");
+
     probe = new QAudioProbe(this);
     probe->setSource(_recorder);
 
     QAudioEncoderSettings audioSettings;
-    audioSettings.setCodec("audio/x-vorbis");
+    audioSettings.setCodec("audio/x-opus");
     audioSettings.setQuality(QMultimedia::HighQuality);
 
     _recorder->setEncodingSettings(audioSettings);
 
     connect(_recorder, &QAudioRecorder::stateChanged, this, [this](){
-        if (_recorder->state() == QAudioRecorder::StoppedState && _recorder->duration()) {
+        if (_recorder->state() == QAudioRecorder::StoppedState && _recorder->duration() && _maxVolume) {
             // compress histogram..
             auto volumeK = 255.0 / double(_maxVolume); // amplificator
-            auto step = histogram.size() / 100.0;
+            if (volumeK > 2) {
+                volumeK = 2; // don't be mad on showing silence
+            }
+            auto step = histogram.size() / double(ITEAudioController::HistogramCompressedSize);
             QStringList columns;
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < ITEAudioController::HistogramCompressedSize; i++) {
                 int prev = int(step * i);
                 int curr = int(step * (i + 1));
                 if (curr == histogram.size()) {
@@ -204,7 +212,7 @@ void AudioRecorder::record(const QString &fileName)
     _maxVolume = 0;
     _recorder->setOutputLocation(QUrl::fromLocalFile(fileName));
     if (_recorder->isMetaDataWritable()) {
-        auto reserved = QLatin1String("AMPLDIAGSTART[000") + QString(",000").repeated(200) + QLatin1String("]AMPLDIAGEND");
+        auto reserved = QLatin1String("AMPLDIAGSTART[000") + QString(",000").repeated(ITEAudioController::HistogramCompressedSize-1) + QLatin1String("]AMPLDIAGEND");
         _recorder->setMetaData(QMediaMetaData::Comment, reserved);
     }
     _recorder->record();
