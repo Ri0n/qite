@@ -62,7 +62,9 @@ public:
 
     QUrl url() const;
 
-    QVariant metadata() const;
+    QVariant metaData() const;
+    void setMetaData(const QVariant &v);
+
     MDState metadataState() const;
 
     static AudioMessageFormat fromCharFormat(const QTextCharFormat &fmt) { return AudioMessageFormat(fmt); }
@@ -102,9 +104,14 @@ QUrl AudioMessageFormat::url() const
     return property(AudioMessageFormat::Url).value<QUrl>();
 }
 
-QVariant AudioMessageFormat::metadata() const
+QVariant AudioMessageFormat::metaData() const
 {
     return property(AudioMessageFormat::Metadata);
+}
+
+void AudioMessageFormat::setMetaData(const QVariant &v)
+{
+    setProperty(AudioMessageFormat::Metadata, v);
 }
 
 AudioMessageFormat::MDState AudioMessageFormat::metadataState() const
@@ -231,7 +238,7 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
         }
     }
 
-    auto hg = audioFormat.metadata();
+    auto hg = audioFormat.metaData();
     if (hg.type() == QVariant::ByteArray) {
         // histogram
 
@@ -305,26 +312,52 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
 
                     connect(player, &QMediaPlayer::metaDataAvailableChanged, this, [this, player](bool available){
                         if (available) {
-                            qDebug() << "title:" << player->metaData(QMediaMetaData::Title).toString();
+                            auto title = player->metaData(QMediaMetaData::Title).toString();
+                            if (title.isEmpty()) {
+                                return;
+                            }
+                            quint32 playerId = player->property("playerId").toUInt();
+                            int textCursorPos = player->property("cursorPos").toInt();
+                            QTextCursor cursor = itc->findElement(playerId, textCursorPos);
+                            if (cursor.isNull()) {
+                                return;
+                            }
+                            auto format = AudioMessageFormat::fromCharFormat(cursor.charFormat().toCharFormat());
+                            if (format.metaData().type() == QVariant::List) {
+                                return; // seems we have histogram already
+                            }
+                            format.setMetaData(title);
+                            cursor.setCharFormat(format);
                         }
                     });
 
                     connect(player, QOverload<const QString &, const QVariant &>::of(&QMediaPlayer::metaDataChanged),
                           [=](const QString &key, const QVariant &value){
-                        if (key == QMediaMetaData::Comment) {
-                            QString comment(value.toString());
-                            if (comment.startsWith(QLatin1String("AMPLDIAGSTART"))) {
-                                int index = comment.indexOf("AMPLDIAGEND");
-                                if (index != -1) {
-                                    qDebug() << "histogram:" << comment.mid(sizeof("AMPLDIAGSTART"), index - sizeof("AMPLDIAGSTART") - 1);
-                                }
-                            }
+                        QString comment;
+                        int index = 0;
+                        if (key != QMediaMetaData::Comment || (comment = value.toString()).isEmpty() ||
+                                !comment.startsWith(QLatin1String("AMPLDIAGSTART")) || (index = comment.indexOf("AMPLDIAGEND")) == -1)
+                        {
+                            return; // In comment we keep histogram. We don't expect anything else
                         }
+                        auto sl = comment.mid(int(sizeof("AMPLDIAGSTART")), index - int(sizeof("AMPLDIAGSTART")) - 1).split(",");
+                        QList<float> histogram;
+                        histogram.reserve(sl.size());
+                        std::transform(sl.constBegin(), sl.constEnd(), histogram.begin(), [](const QString &v){ return v.toFloat(); });
+
+                        quint32 playerId = player->property("playerId").toUInt();
+                        int textCursorPos = player->property("cursorPos").toInt();
+                        QTextCursor cursor = itc->findElement(playerId, textCursorPos);
+                        if (cursor.isNull()) {
+                            return;
+                        }
+
+                        auto format = AudioMessageFormat::fromCharFormat(cursor.charFormat().toCharFormat());
+                        format.setMetaData(QVariant::fromValue<decltype (histogram)>(histogram));
+                        cursor.setCharFormat(format);
                     });
 
                     connect(player, SIGNAL(stateChanged(QMediaPlayer::State)), this, SLOT(playerStateChanged(QMediaPlayer::State)));
-
-
                 }
                 //player->setVolume(0);
                 player->play();
