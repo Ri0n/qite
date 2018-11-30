@@ -112,6 +112,7 @@ QVariant AudioMessageFormat::metaData() const
 void AudioMessageFormat::setMetaData(const QVariant &v)
 {
     setProperty(AudioMessageFormat::Metadata, v);
+    setProperty(AudioMessageFormat::MetadataState, int(Finished));
 }
 
 AudioMessageFormat::MDState AudioMessageFormat::metadataState() const
@@ -245,6 +246,9 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
         for (auto b : hg.toByteArray()) {
 
         }
+    } else if (hg.type() == QVariant::String) {
+        painter->setPen(Qt::black);
+        painter->drawText(metaRect.translated(rect.topLeft().toPoint()), hg.toString());
     }
 
     // runner
