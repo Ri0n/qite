@@ -240,11 +240,20 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
     }
 
     auto hg = audioFormat.metaData();
-    if (hg.type() == QVariant::ByteArray) {
+    if (hg.canConvert<QList<float>>()) {
         // histogram
-
-        for (auto b : hg.toByteArray()) {
-
+        auto hglist = hg.value<QList<float>>();
+        auto step = metaRect.width() / float(hglist.size());
+        auto tmetaRect = metaRect.translated(rect.topLeft().toPoint());
+        painter->setPen(QColor(70,150,70));
+        for (int i = 0; i < hglist.size(); i++) { // values from 0 to 1.0 (including)
+            int left = int(i * step);
+            int right = int((i+1) * step);
+            int height = int(metaRect.height() * hglist[i]);
+            //int top = int(metaRect.height() * (1.0f - hglist[i]));
+            QRect hcolRect(QPoint(left, metaRect.height() - height), QSize(right-left, height));
+            hcolRect.translate(tmetaRect.topLeft());
+            painter->drawRect(hcolRect);
         }
     } else if (hg.type() == QVariant::String) {
         painter->setPen(Qt::black);
@@ -314,6 +323,7 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                         });
                     }
 
+                    // check for title in metadata
                     connect(player, &QMediaPlayer::metaDataAvailableChanged, this, [this, player](bool available){
                         if (available) {
                             auto title = player->metaData(QMediaMetaData::Title).toString();
@@ -335,6 +345,7 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                         }
                     });
 
+                    // try to extract from metadata and store histogram
                     connect(player, QOverload<const QString &, const QVariant &>::of(&QMediaPlayer::metaDataChanged),
                           [=](const QString &key, const QVariant &value){
                         QString comment;
@@ -347,7 +358,13 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                         auto sl = comment.mid(int(sizeof("AMPLDIAGSTART")), index - int(sizeof("AMPLDIAGSTART")) - 1).split(",");
                         QList<float> histogram;
                         histogram.reserve(sl.size());
-                        std::transform(sl.constBegin(), sl.constEnd(), histogram.begin(), [](const QString &v){ return v.toFloat(); });
+                        std::transform(sl.constBegin(), sl.constEnd(), std::back_inserter(histogram), [](const QString &v){
+                            auto fv = v.toFloat() / float(255.0);
+                            if (fv > 1) {
+                                return 1.0f;
+                            }
+                            return fv;
+                        });
 
                         quint32 playerId = player->property("playerId").toUInt();
                         int textCursorPos = player->property("cursorPos").toInt();

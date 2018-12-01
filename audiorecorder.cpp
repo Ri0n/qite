@@ -137,18 +137,21 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
             histogram.squeeze();
             QFile f(_recorder->outputLocation().toLocalFile());
             QByteArray buffer;
-            buffer.resize(4096);
+            buffer.resize(4096 + 1024);
+            qint64 lastPos = 0;
             if (f.open(QIODevice::ReadWrite)) {
                 qint64 bytes;
                 while ((bytes = f.read(buffer.data(), qint64(buffer.size()))) > 0) {
                     auto index = QByteArray::fromRawData(buffer.data(), int(bytes)).indexOf("AMPLDIAGSTART");
                     if (index >= 0) {
-                        f.seek(f.pos() - buffer.size() + index + int(sizeof("AMPLDIAGSTART")));
-                        f.write(columns.join(",").toLatin1());
-                        f.write("]AMPLDIAGEND");
+                        f.seek(lastPos + index + int(sizeof("AMPLDIAGSTART["))); // it's not a mistake with sizeof. It's [ is just escaped
+                        f.write(columns.join(",").toLatin1().replace(',', "\\,"));
+                        f.write("\\]AMPLDIAGEND");
                         f.flush();
                         break;
                     }
+                    lastPos += 4096;
+                    f.seek(lastPos);
                 }
                 f.close();
             }
