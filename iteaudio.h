@@ -27,14 +27,18 @@ under the License.
 #include "qite.h"
 
 class QMediaPlayer;
+class QNetworkAccessManager;
 class AudioMessageFormat;
 
 class ITEAudioController : public InteractiveTextElementController
 {
     Q_OBJECT
 
+    typedef QList<float> Histogram;
+
     QCursor _cursor;
     QMap<quint32,QMediaPlayer*> activePlayers;
+    QNetworkAccessManager *nam = nullptr;
 
     // geometry
     QSize elementSize;
@@ -66,7 +70,7 @@ public:
     void insert(const QUrl &audioSrc); // add new media to textedit
     QCursor cursor(); // cursor form after last mose events
 
-    void setAutoFetchMetadata(bool fetch = true);
+    inline void setAutoFetchMetadata(bool fetch = true) { autoFetchMetadata=fetch; }
 protected:
     bool mouseEvent(const InteractiveTextElementController::Event &event,
                     const QRect &rect, QTextCursor &selected);

@@ -27,6 +27,8 @@ under the License.
 #include <QMediaPlayer>
 #include <QTimer>
 #include <QMediaMetaData>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 
 class AudioMessageFormat : public InteractiveTextFormat
 {
@@ -65,7 +67,8 @@ public:
     QVariant metaData() const;
     void setMetaData(const QVariant &v);
 
-    MDState metadataState() const;
+    MDState metaDataState() const;
+    void setMetaDataState(MDState state);
 
     static AudioMessageFormat fromCharFormat(const QTextCharFormat &fmt) { return AudioMessageFormat(fmt); }
 };
@@ -115,10 +118,16 @@ void AudioMessageFormat::setMetaData(const QVariant &v)
     setProperty(AudioMessageFormat::MetadataState, int(Finished));
 }
 
-AudioMessageFormat::MDState AudioMessageFormat::metadataState() const
+AudioMessageFormat::MDState AudioMessageFormat::metaDataState() const
 {
     return AudioMessageFormat::MDState(property(AudioMessageFormat::MetadataState).value<int>());
 }
+
+void AudioMessageFormat::setMetaDataState(MDState state)
+{
+    setProperty(AudioMessageFormat::MetadataState, int(state));
+}
+
 
 //----------------------------------------------------------------------------
 // ITEAudioController
@@ -166,11 +175,11 @@ void ITEAudioController::updateGeomtry()
     int left = elementHeight;
     int right = elementSize.width() - elementPadding;
     
-    metaRect = QRect(QPoint(left, bgRect.top() + int(baseSize * 3)), QPoint(right, bgRect.top() + int(bgRect.height() * 0.6)));
+    metaRect = QRect(QPoint(left, bgRect.top() + int(baseSize * 3)), QPoint(right, bgRect.top() + int(bgRect.height() * 0.5)));
 
     // draw scale
     scaleOutlineWidth = bgOutlineWidth;
-    QPointF scaleTopLeft(left, metaRect.bottom() + baseSize * 2); // = bgRect.topLeft() + QPointF(left, bgRect.height() * 0.7);
+    QPointF scaleTopLeft(left, metaRect.bottom() + baseSize * 4); // = bgRect.topLeft() + QPointF(left, bgRect.height() * 0.7);
     QPointF scaleBottomRight(right, scaleTopLeft.y() + baseSize * 4);
     scaleRect = QRectF(scaleTopLeft, scaleBottomRight);
     scaleFillRect = scaleRect.adjusted(scaleOutlineWidth / 2, scaleOutlineWidth / 2, -scaleOutlineWidth / 2, -scaleOutlineWidth / 2);
@@ -180,6 +189,7 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
 {
     Q_UNUSED(posInDocument);
     const AudioMessageFormat audioFormat = AudioMessageFormat::fromCharFormat(format.toCharFormat());
+    qDebug() << audioFormat.id();
 
     painter->setRenderHints( QPainter::HighQualityAntialiasing );
 
@@ -223,6 +233,7 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
     QRectF xScaleRect(scaleRect.translated(rect.topLeft()));
     painter->drawRoundedRect(xScaleRect, scaleRect.height() / 2, scaleRect.height() / 2);
 
+    // draw played part
     auto playPos = audioFormat.playPosition();
     if (playPos) {
         painter->setPen(Qt::NoPen);
@@ -232,10 +243,54 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
         painter->drawRoundedRect(playedRect, playedRect.height() / 2, playedRect.height() / 2);
     }
 
-    auto mdState = audioFormat.metadataState();
+    // check metadata. maybe it's ready or we need to query it
+    auto mdState = audioFormat.metaDataState();
     if (mdState != AudioMessageFormat::Finished) {
         if (!autoFetchMetadata || mdState == AudioMessageFormat::RequestInProgress) {
             return;
+        }
+
+        // we need t query histogram. Let's check if it makes sense first.
+        if (audioFormat.url().path().endsWith(".mka")) { // we use mka for audio messages. so it may have histogram
+            auto id = audioFormat.id();
+            // use deleayed call since it's not that good to chage docs from drawing func.
+            QTimer::singleShot(0, this, [this, id, posInDocument](){
+                QTextCursor cursor = itc->findElement(id, posInDocument);
+                if (cursor.isNull()) {
+                    return; // was deleted so quickly?
+                }
+                auto audioFormat = AudioMessageFormat::fromCharFormat(cursor.charFormat());
+                if (audioFormat.metaDataState() != AudioMessageFormat::NotRequested) {
+                    return; // likely duplicate query, while previous one wasn't finished it.
+                }
+
+                // time to query histogram file
+                if (!nam) {
+                    nam = new QNetworkAccessManager(this);
+                }
+                QUrl metaUrl(audioFormat.url());
+                metaUrl.setPath(metaUrl.path() + ".histogram");
+                auto reply = nam->get(QNetworkRequest(metaUrl));
+                audioFormat.setMetaDataState(AudioMessageFormat::RequestInProgress);
+                cursor.setCharFormat(audioFormat);
+                auto pos = cursor.anchor();
+                connect(reply, &QNetworkReply::finished, this, [this, id, pos, reply](){
+                    QTextCursor cursor = itc->findElement(id, pos);
+                    if (!cursor.isNull()) {
+                        Histogram hm;
+                        hm.reserve(HistogramCompressedSize);
+                        for (auto v : QString::fromLatin1(reply->readAll()).split(',')) {
+                            auto fv = v.toFloat() / 255.0f;
+                            hm.push_back(fv > 1.0f? 1.0f : fv);
+                        }
+                        auto afmt = AudioMessageFormat::fromCharFormat(cursor.charFormat());
+                        afmt.setMetaData(QVariant::fromValue<Histogram>(hm));
+                        cursor.setCharFormat(afmt);
+                    }
+                    reply->close();
+                    reply->deleteLater();
+                });
+            });
         }
     }
 
@@ -246,17 +301,20 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
         auto step = metaRect.width() / float(hglist.size());
         auto tmetaRect = metaRect.translated(rect.topLeft().toPoint());
         painter->setPen(QColor(70,150,70));
+        painter->setBrush(QColor(120,220,120));
         for (int i = 0; i < hglist.size(); i++) { // values from 0 to 1.0 (including)
             int left = int(i * step);
             int right = int((i+1) * step);
             int height = int(metaRect.height() * hglist[i]);
-            //int top = int(metaRect.height() * (1.0f - hglist[i]));
-            QRect hcolRect(QPoint(left, metaRect.height() - height), QSize(right-left, height));
-            hcolRect.translate(tmetaRect.topLeft());
-            painter->drawRect(hcolRect);
+            if (height) {
+                //int top = int(metaRect.height() * (1.0f - hglist[i]));
+                QRect hcolRect(QPoint(left, metaRect.height() - height), QSize(right-left, height));
+                hcolRect.translate(tmetaRect.topLeft());
+                painter->drawRect(hcolRect);
+            }
         }
     } else if (hg.type() == QVariant::String) {
-        painter->setPen(Qt::black);
+        painter->setPen(QColor(70,150,70));
         painter->drawText(metaRect.translated(rect.topLeft().toPoint()), hg.toString());
     }
 
@@ -312,12 +370,15 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
 
                     if (player->duration() > 0) {
                         player->setPosition(qint64(player->duration() * part));
+                        player->setNotifyInterval(int(player->duration() / double(metaRect.width()) * 3.0));
                         connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(playerPositionChanged(qint64)));
                     } else {
                         connect(player, &QMediaPlayer::durationChanged, [player,part,this](qint64 duration) {
                             // the timer is a workaround for some Qt bug
                             QTimer::singleShot(0, [player,part,this,duration](){
                                 player->setPosition(qint64(duration * part));
+                                qDebug() << int(duration / double(metaRect.width()));
+                                player->setNotifyInterval(int(duration / 1000.0 / double(metaRect.width()) * 3.0));
                                 connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(playerPositionChanged(qint64)));
                             });
                         });

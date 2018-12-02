@@ -58,6 +58,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
     auto itc = new InteractiveText(ui->textEdit);
     atc = new ITEAudioController(itc);
+    atc->setAutoFetchMetadata(true);
 
     auto musicDir = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
 

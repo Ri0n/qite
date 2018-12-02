@@ -132,9 +132,10 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
                 columns.append(QString::number(int(sum / double(curr - prev + 1) * volumeK)));
             }
 
-            qDebug() << columns.join(",");
+            //qDebug() << columns.join(",");
             histogram.clear();
             histogram.squeeze();
+#ifdef ITE_EMBED_HISTOGRAM // it's somewhat buggy with Qt since it not always writes metainfo at least in 5.11.2
             QFile f(_recorder->outputLocation().toLocalFile());
             QByteArray buffer;
             buffer.resize(4096 + 1024);
@@ -155,6 +156,13 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
                 }
                 f.close();
             }
+#else
+            QFile metaFile(_recorder->outputLocation().toLocalFile()+".histogram");
+            if (metaFile.open(QIODevice::WriteOnly)) {
+                metaFile.write(columns.join(",").toLatin1());
+                metaFile.close();
+            }
+#endif
         }
         emit stateChanged();
     });
@@ -214,10 +222,12 @@ void AudioRecorder::record(const QString &fileName)
     histogram.reserve(HistogramMemSize);
     _maxVolume = 0;
     _recorder->setOutputLocation(QUrl::fromLocalFile(fileName));
+#ifdef ITE_EMBED_HISTOGRAM
     if (_recorder->isMetaDataWritable()) {
         auto reserved = QLatin1String("AMPLDIAGSTART[000") + QString(",000").repeated(ITEAudioController::HistogramCompressedSize-1) + QLatin1String("]AMPLDIAGEND");
         _recorder->setMetaData(QMediaMetaData::Comment, reserved);
     }
+#endif
     _recorder->record();
 }
 
