@@ -26,7 +26,6 @@ under the License.
 #include <QStandardPaths>
 #include <QDir>
 #include <QDirIterator>
-#include <QRandomGenerator>
 #include <QAction>
 #include <QIcon>
 #include <QAudioRecorder>
@@ -107,7 +106,7 @@ void MainWindow::recordMic()
     }
 
     if (recorder->recorder()->state() == QAudioRecorder::StoppedState) {
-        recorder->record(QString("test-%1.mka").arg(QDateTime::currentSecsSinceEpoch()));
+        recorder->record(QString("test-%1.ogg").arg(QDateTime::currentSecsSinceEpoch()));
     } else {
         recorder->stop();
     }

@@ -98,7 +98,6 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
     _recorder = new QAudioRecorder(this);
     //qDebug() << "supported codecs for recorder:" << _recorder->supportedAudioCodecs();
     //qDebug() << "supported containers for recorder:" << _recorder->supportedContainers();
-    _recorder->setContainerFormat("audio/x-matroska");
 
     probe = new QAudioProbe(this);
     probe->setSource(_recorder);
@@ -107,7 +106,7 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
     audioSettings.setCodec("audio/x-opus");
     audioSettings.setQuality(QMultimedia::HighQuality);
 
-    _recorder->setEncodingSettings(audioSettings);
+    _recorder->setEncodingSettings(audioSettings, QVideoEncoderSettings(), "audio/ogg");
 
     connect(_recorder, &QAudioRecorder::stateChanged, this, [this](){
         if (_recorder->state() == QAudioRecorder::StoppedState && _recorder->duration() && _maxVolume) {
