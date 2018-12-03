@@ -153,15 +153,18 @@ void ITEAudioController::updateGeomtry()
 
     bgOutlineWidth = baseSize < 2? 2 : int(baseSize);
 
-    btnRadius = int(baseSize * 9);
+    btnRadius = int(baseSize * 10);
     int elementHeight = btnRadius * 2 + int(elementPadding * 2);
 
-    int histogramColumnWidth = qRound(baseSize * 2);
+    int histogramColumnWidth = qRound(baseSize);
     if (!histogramColumnWidth) {
         histogramColumnWidth = 1;
     }
 
-    elementSize = QSize(elementHeight + histogramColumnWidth * HistogramCompressedSize + elementPadding, elementHeight);
+    auto rightPadding = int(baseSize * 5);
+    // elementHeight already includes 2 paddings: to the lest and to the right of button
+    elementSize = QSize(elementHeight + histogramColumnWidth * HistogramCompressedSize + rightPadding,
+                        elementHeight);
 
     bgRect = QRect(QPoint(0,0), elementSize);
     bgRect.adjust(bgOutlineWidth / 2, bgOutlineWidth / 2, -bgOutlineWidth / 2, -bgOutlineWidth / 2); // outline should fit the format rect.
@@ -173,7 +176,7 @@ void ITEAudioController::updateGeomtry()
 
     // next to the button we need histgram/title and scale.
     int left = elementHeight;
-    int right = elementSize.width() - elementPadding;
+    int right = elementSize.width() - rightPadding;
     
     metaRect = QRect(QPoint(left, bgRect.top() + int(baseSize * 3)), QPoint(right, bgRect.top() + int(bgRect.height() * 0.5)));
 
@@ -189,7 +192,7 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
 {
     Q_UNUSED(posInDocument);
     const AudioMessageFormat audioFormat = AudioMessageFormat::fromCharFormat(format.toCharFormat());
-    qDebug() << audioFormat.id();
+    //qDebug() << audioFormat.id();
 
     painter->setRenderHints( QPainter::HighQualityAntialiasing );
 
@@ -379,7 +382,7 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                                 if (part > 0) { // don't jump back if event came quite late
                                     player->setPosition(qint64(duration * part));
                                 }
-                                qDebug() << int(duration / double(metaRect.width()));
+                                //qDebug() << int(duration / double(metaRect.width()));
                                 player->setNotifyInterval(int(duration / 1000.0 / double(metaRect.width()) * 3.0));
                                 connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(playerPositionChanged(qint64)));
                             });

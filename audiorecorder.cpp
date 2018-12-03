@@ -96,8 +96,8 @@ void handle(const QAudioBuffer &buffer, AudioRecorder::Quantum &quantum, QByteAr
 AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
 {
     _recorder = new QAudioRecorder(this);
-    qDebug() << "supported codecs for recorder:" << _recorder->supportedAudioCodecs();
-    qDebug() << "supported containers for recorder:" << _recorder->supportedContainers();
+    //qDebug() << "supported codecs for recorder:" << _recorder->supportedAudioCodecs();
+    //qDebug() << "supported containers for recorder:" << _recorder->supportedContainers();
     _recorder->setContainerFormat("audio/x-matroska");
 
     probe = new QAudioProbe(this);
