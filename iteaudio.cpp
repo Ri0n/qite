@@ -370,18 +370,21 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
 
                     if (player->duration() > 0) {
                         player->setPosition(qint64(player->duration() * part));
-                        player->setNotifyInterval(int(player->duration() / double(metaRect.width()) * 3.0));
+                        player->setNotifyInterval(int(player->duration() / double(metaRect.width()) * 3.0)); // 3 px
                         connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(playerPositionChanged(qint64)));
                     } else {
                         connect(player, &QMediaPlayer::durationChanged, [player,part,this](qint64 duration) {
                             // the timer is a workaround for some Qt bug
                             QTimer::singleShot(0, [player,part,this,duration](){
-                                player->setPosition(qint64(duration * part));
+                                if (part > 0) { // don't jump back if event came quite late
+                                    player->setPosition(qint64(duration * part));
+                                }
                                 qDebug() << int(duration / double(metaRect.width()));
                                 player->setNotifyInterval(int(duration / 1000.0 / double(metaRect.width()) * 3.0));
                                 connect(player, SIGNAL(positionChanged(qint64)), this, SLOT(playerPositionChanged(qint64)));
                             });
                         });
+                        player->setNotifyInterval(50); // while we don't know duration, lets use quite small value
                     }
 
                     // check for title in metadata
