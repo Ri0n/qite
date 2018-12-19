@@ -20,8 +20,8 @@ under the License.
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "qite.h"
-#include "iteaudio.h"
-#include "audiorecorder.h"
+#include "qiteaudio.h"
+#include "qiteaudiorecorder.h"
 
 #include <QStandardPaths>
 #include <QDir>

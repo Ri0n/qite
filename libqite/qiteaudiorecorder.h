@@ -17,8 +17,8 @@ specific language governing permissions and limitations
 under the License.
 */
 
-#ifndef AUDIORECORDER_H
-#define AUDIORECORDER_H
+#ifndef QITEAUDIORECORDER_H
+#define QITEAUDIORECORDER_H
 
 #include <QObject>
 
@@ -57,4 +57,4 @@ private:
     quint8 _maxVolume;
 };
 
-#endif // AUDIORECORDER_H
+#endif // QITEAUDIORECORDER_H

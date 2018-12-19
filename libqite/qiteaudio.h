@@ -17,8 +17,8 @@ specific language governing permissions and limitations
 under the License.
 */
 
-#ifndef ITEAUDIO_H
-#define ITEAUDIO_H
+#ifndef QITEAUDIO_H
+#define QITEAUDIO_H
 
 #include <QObject>
 #include <QCursor>
@@ -80,4 +80,4 @@ private slots:
     void playerStateChanged(QMediaPlayer::State);
 };
 
-#endif // ITEAUDIO_H
+#endif // QITEAUDIO_H

@@ -17,8 +17,8 @@ specific language governing permissions and limitations
 under the License.
 */
 
-#include "audiorecorder.h"
-#include "iteaudio.h"
+#include "qiteaudiorecorder.h"
+#include "qiteaudio.h"
 
 #include <cmath>
 

@@ -17,7 +17,7 @@ specific language governing permissions and limitations
 under the License.
 */
 
-#include "iteaudio.h"
+#include "qiteaudio.h"
 
 #include <QTextEdit>
 #include <QPainter>
