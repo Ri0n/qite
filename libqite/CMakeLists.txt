@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.1.0)
-project(libqite)
+project(qite)
+
+include(GNUInstallDirs)
 
 # Find includes in corresponding build directories
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -7,16 +9,13 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
 
 # Find the QtWidgets library
-find_package(Qt5Core CONFIG REQUIRED)
-find_package(Qt5Gui CONFIG REQUIRED)
-find_package(Qt5Multimedia CONFIG REQUIRED)
-find_package(Qt5Widgets CONFIG REQUIRED)
+find_package(Qt5 REQUIRED Widgets Multimedia)
 
 include(libqite.cmake)
 
-add_library(qite STATIC ${SOURCES})
+add_library(qite STATIC ${qite_SOURCES})
 set_property(TARGET qite PROPERTY CXX_STANDARD 14)
 target_link_libraries(qite Qt5::Widgets Qt5::Multimedia)
 
-install(TARGETS qite DESTINATION lib)
-install(FILES ${HEADERS} DESTINATION include)
+install(TARGETS qite DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES ${qite_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qite)
