@@ -240,6 +240,11 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
             qWarning("unsupported audio sample type: %d", int(format.sampleType()));
         }
     });
+    connect(_recorder, QOverload<QMediaRecorder::Error>::of(&QMediaRecorder::error), this, [this](QMediaRecorder::Error error){
+        if (error != QMediaRecorder::Error::NoError) {
+            emit this->error(_recorder->errorString());
+        }
+    });
 }
 
 void AudioRecorder::record()
