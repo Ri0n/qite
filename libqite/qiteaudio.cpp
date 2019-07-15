@@ -478,7 +478,7 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                     });
                     QObject::connect(player, static_cast<void(QMediaPlayer::*)(QMediaPlayer::Error)>(&QMediaPlayer::error),
                             [=](QMediaPlayer::Error error) {
-                        qDebug() << "Error occured:" << player->error();
+                        qDebug() << "Error occured:" << error;
                     });
                 }
                 //player->setVolume(0);
