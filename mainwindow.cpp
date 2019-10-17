@@ -32,6 +32,7 @@ under the License.
 #include <QIcon>
 #include <QStandardPaths>
 #include <QStyle>
+#include <ctime>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
@@ -98,8 +99,9 @@ void MainWindow::recordMic()
 
         connect(recorder, &AudioRecorder::recorded, this, [this]() {
             if (recorder->maxVolume() / double(std::numeric_limits<decltype(recorder->maxVolume())>::max()) > 0.1) {
-                atc->insert(QUrl::fromLocalFile(
-                    QFileInfo(recorder->recorder()->outputLocation().toLocalFile()).absoluteFilePath()));
+                auto fileName = QFileInfo(recorder->recorder()->outputLocation().toLocalFile()).absoluteFilePath();
+                qDebug("file=%s", qPrintable(fileName));
+                atc->insert(QUrl::fromLocalFile(fileName));
             } else {
                 ui->textEdit->append("Prefer silence?");
             }
