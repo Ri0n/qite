@@ -551,11 +551,18 @@ void ITEAudioController::playerPositionChanged(qint64 newPos)
     int         textCursorPos = player->property("cursorPos").toInt();
     QTextCursor cursor        = itc->findElement(playerId, textCursorPos);
     if (!cursor.isNull()) {
-        auto audioFormat  = AudioMessageFormat::fromCharFormat(cursor.charFormat());
-        auto lastPixelPos = audioFormat.playPosition();
-        auto newPixelPos
-            = decltype(lastPixelPos)(scaleFillRect.width() * (double(newPos) / double(player->duration())));
+        auto   audioFormat  = AudioMessageFormat::fromCharFormat(cursor.charFormat());
+        auto   lastPixelPos = audioFormat.playPosition();
+        auto   duration     = player->duration();
+        double part         = 0.0;
+        if (!duration || newPos > duration) { // workarund for https://bugreports.qt.io/browse/QTBUG-79282
+            part = newPos ? 1.0 : 0.0;
+        } else {
+            part = double(newPos) / double(duration);
+        }
+        auto newPixelPos = decltype(lastPixelPos)(scaleFillRect.width() * part);
         if (newPixelPos != lastPixelPos) {
+            // qDebug("pos %lld of %lld", newPos, duration);
             audioFormat.setPlayPosition(newPixelPos);
             cursor.setCharFormat(audioFormat);
         }
