@@ -125,7 +125,7 @@ void ITEProgressController::drawITE(QPainter *painter, const QRectF &rect, int p
     const ProgressMessageFormat audioFormat = ProgressMessageFormat::fromCharFormat(format.toCharFormat());
     // qDebug() << audioFormat.id();
 
-    painter->setRenderHints(QPainter::HighQualityAntialiasing);
+    painter->setRenderHints(QPainter::Antialiasing);
 
     QPen bgPen(QColor(100, 200, 100)); // TODO name all the magic colors
     bgPen.setWidth(bgOutlineWidth);

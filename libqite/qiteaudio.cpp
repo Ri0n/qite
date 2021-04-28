@@ -183,7 +183,7 @@ void ITEAudioController::drawITE(QPainter *painter, const QRectF &rect, int posI
     const AudioMessageFormat audioFormat = AudioMessageFormat::fromCharFormat(format.toCharFormat());
     // qDebug() << audioFormat.id();
 
-    painter->setRenderHints(QPainter::HighQualityAntialiasing);
+    painter->setRenderHints(QPainter::Antialiasing);
 
     QPen bgPen(QColor(100, 200, 100)); // TODO name all the magic colors
     bgPen.setWidth(bgOutlineWidth);
