@@ -120,7 +120,8 @@ void ITEProgressController::updateGeomtry()
                                        -scaleOutlineWidth / 2);
 }
 
-void ITEProgressController::drawITE(QPainter *painter, const QRectF &rect, int posInDocument, const QTextFormat &format)
+void ITEProgressController::drawITE(QPainter *painter, const QRectF &rect, [[maybe_unused]] int posInDocument,
+                                    const QTextFormat &format)
 {
     const ProgressMessageFormat audioFormat = ProgressMessageFormat::fromCharFormat(format.toCharFormat());
     // qDebug() << audioFormat.id();
@@ -189,7 +190,8 @@ QTextCharFormat ITEProgressController::makeFormat() const
     return std::move(fmt);
 }
 
-void ITEProgressController::insert(double min, double max, const QString &text)
+void ITEProgressController::insert([[maybe_unused]] double min, [[maybe_unused]] double max,
+                                   [[maybe_unused]] const QString &text)
 {
     auto fmt = makeFormat();
     itc->insert(static_cast<InteractiveTextFormat>(fmt));
@@ -216,8 +218,8 @@ bool ITEProgressController::mouseEvent(const Event &event, const QRect &rect, QT
     ProgressMessageFormat::Flags state             = format.state();
     bool                         onButtonChanged   = bool(state & ProgressMessageFormat::MouseOnButton) != onButton;
     bool                         onTrackbarChanged = bool(state & ProgressMessageFormat::MouseOnTrackbar) != onTrackbar;
-    bool                         playStateChanged  = false;
-    bool                         positionSet       = false;
+    // bool                         playStateChanged  = false;
+    // bool                         positionSet       = false;
 
     if (onButtonChanged) {
         state ^= ProgressMessageFormat::MouseOnButton;
