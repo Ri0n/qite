@@ -21,6 +21,7 @@ under the License.
 #define QITE_H
 
 #include <QObject>
+#include <QPointer>
 #include <QTextEdit>
 #include <QTextObjectInterface>
 
@@ -89,7 +90,7 @@ class InteractiveText : public QObject {
 public:
     InteractiveText(QTextEdit *_textEdit, int baseObjectType = QTextFormat::UserObject);
     ~InteractiveText();
-    inline QTextEdit *textEdit() const { return _textEdit.get(); }
+    inline QTextEdit *textEdit() const { return _textEdit.data(); }
 
     int                              registerController(InteractiveTextElementController *elementController);
     void                             unregisterController(InteractiveTextElementController *elementController);

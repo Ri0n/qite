@@ -111,7 +111,7 @@ void MainWindow::recordMic()
     }
 
     if (recorder->state() == AudioRecorder::StoppedState) {
-        recorder->record(QString("test-%1.ogg").arg(QDateTime::currentSecsSinceEpoch()));
+        recorder->record(QString("test-%1.mp4").arg(QDateTime::currentSecsSinceEpoch()));
     } else {
         recorder->stop();
     }

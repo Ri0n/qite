@@ -155,18 +155,28 @@ bool InteractiveText::eventFilter(QObject *obj, QEvent *event)
         return false;
     }
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#define MoveMoveEvent QEvent::HoverMove
     bool ourEvent = (obj == _textEdit
                      && (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove
                          || event->type() == QEvent::HoverLeave))
         || (obj == _textEdit->viewport() && event->type() == QEvent::MouseButtonPress);
+#else
+#define MoveMoveEvent QEvent::MouseMove
+    bool ourEvent = (obj == _textEdit && (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverLeave))
+        || (obj == _textEdit->viewport()
+            && (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseMove));
+#endif
+
     if (!ourEvent) {
         return false;
     }
+    // qDebug() << "event obj=" << (obj == _textEdit ? "textedit" : "viewport") << "type=" << event->type();
 
     bool   ret          = false;
     bool   leaveHandled = false;
     QPoint pos; // relative to visible part.
-    if (event->type() == QEvent::MouseButtonPress) {
+    if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseMove) {
         pos = static_cast<QMouseEvent *>(event)->pos();
     } else {
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -176,7 +186,7 @@ bool InteractiveText::eventFilter(QObject *obj, QEvent *event)
 #endif
     }
 
-    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove
+    if (event->type() == QEvent::HoverEnter || event->type() == MoveMoveEvent
         || event->type() == QEvent::MouseButtonPress) {
         QPoint viewportOffset(_textEdit->horizontalScrollBar()->value(), _textEdit->verticalScrollBar()->value());
         int    docLPos = _textEdit->document()->documentLayout()->hitTest(pos + viewportOffset, Qt::ExactHit);

@@ -36,15 +36,6 @@ class QTimer;
 class AudioRecorder : public QObject {
     Q_OBJECT
 public:
-    static const qint64 HistogramQuantumSize = 10000;                                // 10ms. 100 values per second
-    static const int    HistogramMemSize     = int(1e6) / HistogramQuantumSize * 20; // for 20 secs. ~ 2Kb
-
-    struct Quantum {
-        qint64 timeLeft = HistogramQuantumSize; // to generate next value for aplitude amplitudes
-        qreal  sum      = 0.0;
-        int    count    = 0;
-    };
-
     enum State { StoppedState, RecordingState };
 
     explicit AudioRecorder(QObject *parent = nullptr);
@@ -63,12 +54,11 @@ public:
 
 private:
     void cleanup();
-    void postProcess();
+    void postProcess(quint8 maxValume, const QByteArray &amplitudes);
     void recordToFile(const QString &fileName);
 
 signals:
     void stateChanged();
-    void recordingStarted();
     void recorded();
     void error(const QString &message);
 public slots:
@@ -81,19 +71,16 @@ private:
     QMediaCaptureSession *_captureSession = nullptr;
     QMediaRecorder       *_recorder       = nullptr;
 #endif
-    // QAudioProbe *   _probe;
-    Quantum    _quantum;
-    QByteArray _amplitudes;
     QByteArray _compressedHistorgram;
     QString    _fileName;
     QByteArray _audioData;
     QTimer    *_maxDurationTimer = nullptr;
     qint64     _duration;
     int        _maxDuration = -1;
-    quint8     _maxVolume;
-    bool       _destroying = false;
-    bool       _isTmpFile  = false;
-    State      _state      = StoppedState;
+    bool       _destroying  = false;
+    bool       _isTmpFile   = false;
+    quint8     _maxVolume   = 0;
+    State      _state       = StoppedState;
 };
 
 #endif // QITEAUDIORECORDER_H
