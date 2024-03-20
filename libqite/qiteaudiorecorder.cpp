@@ -30,9 +30,6 @@ under the License.
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-#include <QMediaFormat>
-#endif
 #include <QMediaMetaData>
 #include <QTemporaryFile>
 #include <QTimer>
@@ -45,6 +42,7 @@ under the License.
 #include <QAudioInput>
 #include <QMediaCaptureSession>
 #include <QMediaDevices>
+#include <QMediaFormat>
 #include <QMediaRecorder>
 #define QtRecorder QMediaRecorder
 #endif
