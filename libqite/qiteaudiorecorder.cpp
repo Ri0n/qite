@@ -20,12 +20,8 @@ under the License.
 #include "qiteaudiorecorder.h"
 #include "qiteaudio.h"
 
-#include <cmath>
-
-#include <QAudioFormat>
-// #include <QAudioProbe>
 #include <QAudioBuffer>
-// #include <QAudioRecorder>
+#include <QAudioFormat>
 #include <QByteArray>
 #include <QDateTime>
 #include <QDir>
@@ -110,6 +106,7 @@ void handle(const QAudioBuffer &buffer, AudioRecorder::Quantum &quantum, QByteAr
     }
 }
 #endif
+
 AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
 {
     _recorder = new QtRecorder(this);
@@ -148,82 +145,17 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     connect(_recorder, &QtRecorder::stateChanged, this, [this]() {
         auto recorderState = _recorder->state();
+        _state             = recorderState == QAudioRecorder::StoppedState ? StoppedState : RecordingState;
 #else
     connect(_recorder, &QtRecorder::recorderStateChanged, this, [this](QMediaRecorder::RecorderState recorderState) {
+        _state = recorderState == QtRecorder::StoppedState ? StoppedState : RecordingState;
         if (recorderState == QtRecorder::RecordingState) {
             emit recordingStarted();
             return;
         }
 #endif
-        if (recorderState == QtRecorder::StoppedState && _maxVolume) {
-            // compress amplitudes..
-            auto volumeK = 255.0 / double(_maxVolume); // amplificator
-            if (volumeK > 8) {
-                volumeK = 8; // don't be mad on showing silence
-            }
-            auto step = _amplitudes.size() / double(ITEAudioController::HistogramCompressedSize);
-            _compressedHistorgram.reserve(ITEAudioController::HistogramCompressedSize);
-
-            for (int i = 0; i < ITEAudioController::HistogramCompressedSize; i++) {
-                int prev = int(step * i);
-                int curr = int(step * (i + 1));
-                if (curr == _amplitudes.size()) {
-                    curr = _amplitudes.size() - 1;
-                }
-
-                int sum = 0;
-                for (int j = prev; j <= curr; j++) {
-                    sum += quint8(_amplitudes[j]);
-                }
-                _compressedHistorgram.append(int(sum / double(curr - prev + 1) * volumeK));
-            }
-
-            QStringList columns;
-            std::transform(_compressedHistorgram.begin(), _compressedHistorgram.end(), std::back_inserter(columns),
-                           [](auto const &v) { return QString::number(v); });
-
-            // qDebug() << columns.join(",");
-            _amplitudes.clear();
-            _amplitudes.squeeze();
-#ifdef ITE_EMBED_HISTOGRAM // it's somewhat buggy with Qt since it not always writes metainfo at least in 5.11.2
-            QFile      f(_recorder->outputLocation().toLocalFile());
-            QByteArray buffer;
-            buffer.resize(4096 + 1024);
-            qint64 lastPos = 0;
-            if (f.open(QIODevice::ReadWrite)) {
-                qint64 bytes;
-                while ((bytes = f.read(buffer.data(), qint64(buffer.size()))) > 0) {
-                    auto index = QByteArray::fromRawData(buffer.data(), int(bytes)).indexOf("AMPLDIAGSTART");
-                    if (index >= 0) {
-                        f.seek(
-                            lastPos + index
-                            + int(sizeof("AMPLDIAGSTART["))); // it's not a mistake with sizeof. It's [ is just escaped
-                        f.write(columns.join(",").toLatin1().replace(',', "\\,"));
-                        f.write("\\]AMPLDIAGEND");
-                        f.flush();
-                        break;
-                    }
-                    lastPos += 4096;
-                    f.seek(lastPos);
-                }
-                f.close();
-            }
-#else
-            if (_isTmpFile) {
-                QString fn = _recorder->outputLocation().toLocalFile();
-                QFile   f(fn);
-                f.open(QIODevice::ReadOnly);
-                _audioData = f.readAll();
-                f.close();
-                f.remove();
-            } else {
-                QFile metaFile(_recorder->outputLocation().toLocalFile() + ".amplitudes");
-                if (metaFile.open(QIODevice::WriteOnly)) {
-                    metaFile.write(columns.join(",").toLatin1());
-                    metaFile.close();
-                }
-            }
-#endif
+        if (recorderState == QtRecorder::StoppedState) {
+            postProcess();
             emit recorded();
         }
 
@@ -295,7 +227,10 @@ AudioRecorder::AudioRecorder(QObject *parent) : QObject(parent)
     });
 #else
     connect(_recorder, &QMediaRecorder::errorOccurred, this,
-            [this](QMediaRecorder::Error error, const QString &errorString) { emit this->error(errorString); });
+            [this](QMediaRecorder::Error error, const QString &errorString) {
+                Q_UNUSED(error);
+                emit this->error(errorString);
+            });
 #endif
 }
 
@@ -316,6 +251,7 @@ void AudioRecorder::record()
 void AudioRecorder::record(const QString &fileName)
 {
     cleanup();
+    _fileName = fileName;
     recordToFile(fileName);
 }
 
@@ -366,4 +302,75 @@ void AudioRecorder::cleanup()
         delete _maxDurationTimer;
         _maxDurationTimer = nullptr;
     }
+}
+
+void AudioRecorder::postProcess()
+{
+    // compress amplitudes..
+    auto volumeK = 255.0 / double(_maxVolume); // amplificator
+    if (volumeK > 8) {
+        volumeK = 8; // don't be mad on showing silence
+    }
+    auto step = _amplitudes.size() / double(ITEAudioController::HistogramCompressedSize);
+    _compressedHistorgram.reserve(ITEAudioController::HistogramCompressedSize);
+
+    for (int i = 0; i < ITEAudioController::HistogramCompressedSize; i++) {
+        int prev = int(step * i);
+        int curr = int(step * (i + 1));
+        if (curr == _amplitudes.size()) {
+            curr = _amplitudes.size() - 1;
+        }
+
+        int sum = 0;
+        for (int j = prev; j <= curr; j++) {
+            sum += quint8(_amplitudes[j]);
+        }
+        _compressedHistorgram.append(int(sum / double(curr - prev + 1) * volumeK));
+    }
+
+    QStringList columns;
+    std::transform(_compressedHistorgram.begin(), _compressedHistorgram.end(), std::back_inserter(columns),
+                   [](auto const &v) { return QString::number(v); });
+
+    // qDebug() << columns.join(",");
+    _amplitudes.clear();
+    _amplitudes.squeeze();
+#ifdef ITE_EMBED_HISTOGRAM // it's somewhat buggy with Qt since it not always writes metainfo at least in 5.11.2
+    QFile      f(_recorder->outputLocation().toLocalFile());
+    QByteArray buffer;
+    buffer.resize(4096 + 1024);
+    qint64 lastPos = 0;
+    if (f.open(QIODevice::ReadWrite)) {
+        qint64 bytes;
+        while ((bytes = f.read(buffer.data(), qint64(buffer.size()))) > 0) {
+            auto index = QByteArray::fromRawData(buffer.data(), int(bytes)).indexOf("AMPLDIAGSTART");
+            if (index >= 0) {
+                f.seek(lastPos + index
+                       + int(sizeof("AMPLDIAGSTART["))); // it's not a mistake with sizeof. It's [ is just escaped
+                f.write(columns.join(",").toLatin1().replace(',', "\\,"));
+                f.write("\\]AMPLDIAGEND");
+                f.flush();
+                break;
+            }
+            lastPos += 4096;
+            f.seek(lastPos);
+        }
+        f.close();
+    }
+#else
+    if (_isTmpFile) {
+        QString fn = _recorder->outputLocation().toLocalFile();
+        QFile   f(fn);
+        f.open(QIODevice::ReadOnly);
+        _audioData = f.readAll();
+        f.close();
+        f.remove();
+    } else {
+        QFile metaFile(_recorder->outputLocation().toLocalFile() + ".amplitudes");
+        if (metaFile.open(QIODevice::WriteOnly)) {
+            metaFile.write(columns.join(",").toLatin1());
+            metaFile.close();
+        }
+    }
+#endif
 }

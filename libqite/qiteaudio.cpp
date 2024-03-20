@@ -19,6 +19,7 @@ under the License.
 
 #include "qiteaudio.h"
 
+#include <QAudioOutput>
 #include <QEvent>
 #include <QHoverEvent>
 #include <QMediaMetaData>
@@ -347,7 +348,7 @@ QTextCharFormat ITEAudioController::makeFormat(const QUrl &audioSrc, ITEMediaOpe
 {
     AudioMessageFormat fmt(objectType, itc->nextId(), audioSrc, mediaOpener);
     fmt.setFontPointSize(itc->textEdit()->currentFont().pointSize());
-    return std::move(fmt);
+    return fmt;
 }
 
 void ITEAudioController::insert(const QUrl &audioSrc, ITEMediaOpener *mediaOpener)
@@ -396,6 +397,7 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
             if (state & AudioMessageFormat::Playing) {
                 if (!player) {
                     player = new QMediaPlayer(this);
+                    player->setAudioOutput(new QAudioOutput(player));
                     player->setProperty("playerId", playerId);
                     player->setProperty("cursorPos", selected.anchor());
                     activePlayers.insert(playerId, player);
@@ -518,17 +520,20 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                                 cursor.setCharFormat(format);
                             });
 
-                    connect(player, SIGNAL(stateChanged(ITEAudioController::PlaybackState)), this,
-                            SLOT(playerStateChanged(ITEAudioController::PlaybackState)));
                     QObject::connect(player, &QMediaPlayer::mediaStatusChanged,
                                      [=]() { qDebug() << "Media status changed:" << player->mediaStatus(); });
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+                    connect(player, SIGNAL(stateChanged(ITEAudioController::PlaybackState)), this,
+                            SLOT(playerStateChanged(ITEAudioController::PlaybackState)));
                     QObject::connect(player,
                                      static_cast<void (QMediaPlayer::*)(QMediaPlayer::Error)>(&QMediaPlayer::error),
                                      [=](QMediaPlayer::Error error) { qDebug() << "Error occurred:" << error; });
 #else
+                    QObject::connect(player, &QMediaPlayer::playbackStateChanged, this,
+                                     &ITEAudioController::playerStateChanged);
                     QObject::connect(player, &QMediaPlayer::errorOccurred, this,
                                      [=](QMediaPlayer::Error error, const QString &errorString) {
+                                         Q_UNUSED(error);
                                          qDebug() << "Error occurred:" << errorString;
                                      });
 #endif

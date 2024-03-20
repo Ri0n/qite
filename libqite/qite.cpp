@@ -28,6 +28,8 @@ under the License.
 #include <QTextEdit>
 #include <QTextObjectInterface>
 
+// #define DEBUG_QITE
+
 //----------------------------------//
 // InteractiveTextElementController //
 //----------------------------------//
@@ -37,7 +39,15 @@ InteractiveTextElementController::InteractiveTextElementController(InteractiveTe
     objectType = itc->registerController(this);
 }
 
-InteractiveTextElementController::~InteractiveTextElementController() { itc->unregisterController(this); }
+InteractiveTextElementController::~InteractiveTextElementController()
+{
+    if (itc) {
+        itc->unregisterController(this);
+    }
+#ifdef DEBUG_QITE
+    qDebug("InteractiveTextElementController destroyed");
+#endif
+}
 
 void InteractiveTextElementController::drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc,
                                                   int posInDocument, const QTextFormat &format)
@@ -78,6 +88,13 @@ InteractiveText::InteractiveText(QTextEdit *textEdit, int baseObjectType) :
     connect(textEdit, &QTextEdit::textChanged, this, &InteractiveText::trackVisibility, Qt::QueuedConnection);
 }
 
+InteractiveText::~InteractiveText()
+{
+#ifdef DEBUG_QITE
+    qDebug("InteractiveText destroyed");
+#endif
+}
+
 int InteractiveText::registerController(InteractiveTextElementController *elementController)
 {
     auto           objectType = _objectType++;
@@ -89,7 +106,8 @@ int InteractiveText::registerController(InteractiveTextElementController *elemen
 
 void InteractiveText::unregisterController(InteractiveTextElementController *elementController)
 {
-    textEdit()->document()->documentLayout()->unregisterHandler(elementController->objectType, elementController);
+    if (_textEdit)
+        _textEdit->document()->documentLayout()->unregisterHandler(elementController->objectType, elementController);
     _controllers.remove(elementController->objectType);
 }
 
@@ -280,9 +298,10 @@ void InteractiveText::trackVisibility()
     QRect viewPort(QPoint(0, 0), _textEdit->viewport()->size());
 
     while (it.hasNext()) {
-        auto id     = it.next();
-        auto cursor = findElement(
-            id); // FIXME this call is not optimal. but internally it uses qtextdocument, so it won't slowdoan that much
+        auto id = it.next();
+
+        // FIXME this call is not optimal. but internally it uses qtextdocument, so it won't slowdoan that much
+        auto cursor = findElement(id);
         if (!cursor.isNull()) {
             auto cr = elementRect(cursor);
             cr.translate(-viewportOffset);
