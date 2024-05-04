@@ -503,7 +503,7 @@ bool ITEAudioController::mouseEvent(const Event &event, const QRect &rect, QText
                     connect(player,
                             static_cast<void (QMediaPlayer::*)(const QString &, const QVariant &)>(
                                 &QMediaPlayer::metaDataChanged),
-                            [=](const QString &key, const QVariant &value) {
+                            [this, player](const QString &key, const QVariant &value) {
                                 if (key != QMediaMetaData::Comment) {
                                     return;
                                 }
