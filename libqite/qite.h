@@ -26,6 +26,7 @@ under the License.
 #include <QTextObjectInterface>
 
 class InteractiveText;
+class ITEMediaState;
 
 #ifndef QITE_FIRST_USER_PROPERTY
 #define QITE_FIRST_USER_PROPERTY 0
@@ -99,12 +100,18 @@ public:
     void                             markVisible(const InteractiveTextFormat::ElementId &id);
     InteractiveTextFormat::ElementId nextId();
 
+    // Document coordinates. The cursor must select the object character.
+    QRect elementRect(const QTextCursor &selected) const;
+
+signals:
+    // Geometry changes only; media frame/position updates must not go through the document.
+    void viewportChanged();
+
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
 
 private:
-    void  checkAndGenerateLeaveEvent(QEvent *event);
-    QRect elementRect(const QTextCursor &selected) const;
+    void checkAndGenerateLeaveEvent(QEvent *event);
 private slots:
     void trackVisibility();
 
@@ -125,6 +132,8 @@ public:
     virtual QIODevice *open(QUrl &url)           = 0;
     virtual void       close(QIODevice *dev)     = 0;
     virtual QVariant   metadata(const QUrl &url) = 0;
+    // Optional, host-owned and shared across players; nullptr means unavailable.
+    virtual ITEMediaState *mediaState(const QUrl &) { return nullptr; }
 };
 
 #endif // QITE_H
