@@ -174,9 +174,10 @@ private slots:
         QVERIFY(qAbs(duration * slider.value() / slider.maximum() - duration * 95 / 100) <= 72000);
 
         // Normal handle clicks still enter Qt's drag mode.
+        slider.setValue(5000); // Handle is centered across desktop styles.
         QSignalSpy pressed(&slider, &QSlider::sliderPressed);
         QTest::mousePress(&slider, Qt::LeftButton, Qt::NoModifier,
-                          QPoint(slider.width() * 95 / 100, slider.height() / 2));
+                          slider.rect().center());
         QCOMPARE(pressed.count(), 1);
         QVERIFY(slider.isSliderDown());
         QTest::mouseRelease(&slider, Qt::LeftButton);
@@ -835,6 +836,9 @@ private slots:
         QTRY_VERIFY(slider->isEnabled());
         slider->setValue(5000); // Also exercises keyboard/page-step seek handling.
         QTRY_VERIFY(qAbs(player->position() - player->duration() / 2) < 100);
+        QTest::mouseClick(slider, Qt::LeftButton, Qt::NoModifier,
+                          QPoint(slider->width() * 3 / 4, slider->height() / 2));
+        QTRY_VERIFY(qAbs(player->position() - player->duration() * 3 / 4) < 130);
         button->click();
         edit.hide();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
