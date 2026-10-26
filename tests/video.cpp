@@ -398,9 +398,151 @@ private slots:
         button->click();
         QTRY_VERIFY(fullscreenWindow());
         full = fullscreenWindow();
-        edit.clear(); // Deleting the message also closes its fullscreen window.
-        QTRY_VERIFY(full.isNull());
+        edit.clear(); // Pruning the chat must NOT close an undocked player.
+        QTRY_VERIFY(!full.isNull());
+        QVERIFY(full->isFullScreen());
+        QCOMPARE(frame->window(), full.data());
         QVERIFY(edit.findChildren<ITEVideoFrameWidget *>().isEmpty());
+        QTest::keyClick(full, Qt::Key_Escape);
+        QTRY_VERIFY(full && !full->isFullScreen()); // No inline anchor: keep a normal window.
+        QCOMPARE(full->objectName(), QStringLiteral("qite-video-window"));
+        full->close();
+        QTRY_VERIFY(full.isNull());
+    }
+
+    void separateWindowOutlivesChatMessage()
+    {
+        TextEdit        edit;
+        InteractiveText text(&edit);
+        VideoController video(&text);
+        StateOpener     opener;
+        video.insert(QUrl(QStringLiteral("test:video")), &opener);
+        edit.insertPlainText("\n" + QString("chat\n").repeated(150));
+        edit.moveCursor(QTextCursor::Start);
+        edit.show();
+        QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+        auto frame = edit.findChild<ITEVideoFrameWidget *>();
+        auto inlinePlayer = frame->parentWidget();
+        auto detach = inlinePlayer->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"));
+        QVERIFY(detach);
+        QCOMPARE(detach->toolTip(), QStringLiteral("Open in separate window"));
+
+        auto play = inlinePlayer->findChild<QToolButton *>(QStringLiteral("qite-video-play"));
+        QVERIFY(play);
+        play->click();
+        QPointer<QMediaPlayer> media = inlinePlayer->findChild<QMediaPlayer *>();
+        QVERIFY(media);
+        QCOMPARE(opener.opens, 1);
+
+        detach->click();
+        auto popup = frame->window();
+        QPointer<QWidget> window = popup;
+        QVERIFY(popup != &edit);
+        QCOMPARE(popup->objectName(), QStringLiteral("qite-video-window"));
+        QVERIFY(popup->isVisible());
+        QVERIFY(!popup->isFullScreen());
+        QCOMPARE(popup->findChild<QMediaPlayer *>(), media.data());
+        QCOMPARE(opener.opens, 1);
+
+        // Scrolling the original message away must not hide or pause the window.
+        edit.verticalScrollBar()->setValue(edit.verticalScrollBar()->maximum());
+        QCoreApplication::processEvents();
+        QVERIFY(window && window->isVisible());
+        QCOMPARE(media->parent(), static_cast<QObject *>(inlinePlayer)); // The decoder stays with its VideoPlayer.
+        QCOMPARE(opener.opens, 1);
+
+        // The pop-out control toggles back to inline when its message survives.
+        detach->click();
+        QTRY_VERIFY(window.isNull());
+        QCOMPARE(frame->parentWidget(), inlinePlayer);
+        QCOMPARE(inlinePlayer->parentWidget(), edit.viewport());
+        QCOMPARE(inlinePlayer->findChild<QMediaPlayer *>(), media.data());
+
+        // Pop out once more, then delete the entire chat log.
+        edit.verticalScrollBar()->setValue(0);
+        QTRY_VERIFY(inlinePlayer->isVisible());
+        detach->click();
+        popup = frame->window();
+        window = popup;
+        QVERIFY(popup != &edit);
+        edit.clear();
+        QTRY_VERIFY(window && window->isVisible());
+        QCOMPARE(frame->window(), window.data());
+        QCOMPARE(window->findChild<QMediaPlayer *>(), media.data());
+        QCOMPARE(opener.opens, 1);
+        QVERIFY(edit.findChildren<ITEVideoFrameWidget *>().isEmpty());
+
+        window->close();
+        QTRY_VERIFY(window.isNull());
+        QVERIFY(media.isNull()); // Window deletion releases decoder and stream.
+    }
+
+    void detachedWindowSurvivesControllerDestruction()
+    {
+        StateOpener opener;
+        QPointer<QWidget> detached;
+        QPointer<QMediaPlayer> media;
+        {
+            TextEdit edit;
+            InteractiveText text(&edit);
+            {
+                VideoController video(&text);
+                video.insert(QUrl(QStringLiteral("test:video")), &opener);
+                edit.show();
+                QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+                auto widget = edit.findChild<ITEVideoFrameWidget *>()->parentWidget();
+                auto play = widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"));
+                QVERIFY(play);
+                play->click();
+                media = widget->findChild<QMediaPlayer *>();
+                QVERIFY(media);
+                auto detach = widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"));
+                QVERIFY(detach);
+                detach->click();
+                detached = widget->window();
+                QVERIFY(detached && detached->isVisible());
+            } // The controller no longer owns the detached player.
+            QVERIFY(detached && detached->isVisible());
+        } // Even destroying QTextEdit leaves the top-level video window.
+        QVERIFY(detached && detached->isVisible());
+        QVERIFY(media);
+        detached->close();
+        QTRY_VERIFY(detached.isNull());
+        QVERIFY(media.isNull());
+    }
+
+    void separateWindowCanToggleFullscreenWithoutReopening()
+    {
+        TextEdit edit;
+        InteractiveText text(&edit);
+        VideoController video(&text);
+        StateOpener opener;
+        video.insert(QUrl(QStringLiteral("test:video")), &opener);
+        edit.show();
+        QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+        auto widget = edit.findChild<ITEVideoFrameWidget *>()->parentWidget();
+        widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"))->click();
+        auto media = widget->findChild<QMediaPlayer *>();
+        QVERIFY(media);
+        auto detach = widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"));
+        auto fullscreen = widget->findChild<QToolButton *>(QStringLiteral("qite-video-fullscreen-button"));
+        QVERIFY(detach);
+        QVERIFY(fullscreen);
+        detach->click();
+        QPointer<QWidget> window = widget->window();
+        QVERIFY(window && window->isVisible());
+        fullscreen->click();
+        QTRY_VERIFY(window->isFullScreen());
+        QCOMPARE(window->objectName(), QStringLiteral("qite-video-fullscreen"));
+        QCOMPARE(window->findChild<QMediaPlayer *>(), media);
+        fullscreen->click();
+        QTRY_VERIFY(!window->isFullScreen());
+        QCOMPARE(window->objectName(), QStringLiteral("qite-video-window"));
+        QCOMPARE(window->findChild<QMediaPlayer *>(), media);
+        QCOMPARE(opener.opens, 1);
+        window->close();
+        QTRY_VERIFY(window.isNull());
+        QCOMPARE(widget->parentWidget(), edit.viewport());
     }
 
     void resizeStress()
