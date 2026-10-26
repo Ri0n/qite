@@ -588,8 +588,14 @@ public:
     explicit Private(ITEVideoController *controller) : q(controller) { }
     ~Private()
     {
-        for (const auto &entry : entries)
-            delete entry.widget;
+        for (const auto &entry : entries) {
+            if (entry.widget) {
+                if (entry.widget->isFloating())
+                    entry.widget->orphan(); // Window continues after the chat is gone.
+                else
+                    delete entry.widget;
+            }
+        }
     }
 
     void schedule()
@@ -615,7 +621,12 @@ public:
                 || entry.cursor.selectedText() != QString(QChar::ObjectReplacementCharacter)
                 || entry.cursor.charFormat().objectType() != q->objectType
                 || InteractiveTextFormat::id(entry.cursor.charFormat()) != it.key()) {
-                delete entry.widget;
+                if (entry.widget) {
+                    if (entry.widget->isFloating())
+                        entry.widget->orphan();
+                    else
+                        delete entry.widget;
+                }
                 it = entries.erase(it);
                 continue;
             }
@@ -623,11 +634,16 @@ public:
             const bool  visible = rect.isValid() && rect.intersects(edit->viewport()->rect());
             if (visible && !entry.widget) {
                 const auto source = entry.cursor.charFormat().property(Source).toUrl();
-                entry.widget = new VideoPlayer(entry.cursor.charFormat(), edit->viewport(), [controller = q, source] {
-                    emit controller->downloadRequested(source);
-                });
+                entry.widget = new VideoPlayer(
+                    entry.cursor.charFormat(), edit->viewport(),
+                    [controller = QPointer<ITEVideoController>(q), source] {
+                        if (controller)
+                            emit controller->downloadRequested(source);
+                    },
+                    [this] { schedule(); });
             }
-            if (entry.widget) {
+            if (entry.widget && !entry.widget->isFloating()) {
+                // Never hide/reparent an undocked player as the chat scrolls.
                 entry.widget->setGeometry(rect);
                 entry.widget->setVisible(visible);
             }
