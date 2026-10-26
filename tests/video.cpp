@@ -545,6 +545,38 @@ private slots:
         QCOMPARE(widget->parentWidget(), edit.viewport());
     }
 
+    void detachedPlaybackContinuesAfterPruning()
+    {
+        if (!qEnvironmentVariableIntValue("QITE_TEST_PLAYBACK"))
+            QSKIP("Enable QITE_TEST_PLAYBACK with a working WebM decoder");
+
+        TextEdit edit;
+        InteractiveText text(&edit);
+        VideoController video(&text);
+        video.insert(QUrl::fromLocalFile(QStringLiteral(QITE_TEST_VIDEO)));
+        edit.show();
+        QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+        auto widget = edit.findChild<ITEVideoFrameWidget *>()->parentWidget();
+        auto play = widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"));
+        auto popout = widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"));
+        QVERIFY(play);
+        QVERIFY(popout);
+        play->click();
+        QPointer<QMediaPlayer> player = widget->findChild<QMediaPlayer *>();
+        QVERIFY(player);
+        QTRY_VERIFY_WITH_TIMEOUT(player->position() > 200, 10000);
+        popout->click();
+        QPointer<QWidget> window = widget->window();
+        QVERIFY(window && window->isVisible());
+        edit.clear();
+        QTRY_VERIFY(window && window->isVisible());
+        const qint64 previous = player->position();
+        QTRY_VERIFY_WITH_TIMEOUT(player && player->position() > previous + 200, 5000);
+        window->close();
+        QTRY_VERIFY(window.isNull());
+        QVERIFY(player.isNull());
+    }
+
     void resizeStress()
     {
         class Window : public QMainWindow {
