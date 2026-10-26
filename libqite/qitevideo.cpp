@@ -280,7 +280,8 @@ public:
         }
         windowButton = new QToolButton(controls);
         windowButton->setObjectName(QStringLiteral("qite-video-window-button"));
-        windowButton->setIcon(style()->standardIcon(QStyle::SP_TitleBarNormalButton));
+        windowButton->setIcon(QIcon::fromTheme(QStringLiteral("window-new"),
+                                               style()->standardIcon(QStyle::SP_TitleBarNormalButton)));
         updateWindowButton();
         row->addWidget(windowButton);
         fullscreenButton = new QToolButton(controls);
