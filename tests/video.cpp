@@ -399,6 +399,7 @@ private slots:
         QTRY_VERIFY(fullscreenWindow());
         full = fullscreenWindow();
         edit.clear(); // Pruning the chat must NOT close an undocked player.
+        QTest::qWait(30); // Let the document's queued synchronization orphan the player.
         QTRY_VERIFY(!full.isNull());
         QVERIFY(full->isFullScreen());
         QCOMPARE(frame->window(), full.data());
@@ -467,6 +468,7 @@ private slots:
         QVERIFY(popup != &edit);
         edit.clear();
         QTRY_VERIFY(window && window->isVisible());
+        QTRY_VERIFY(!detach->isEnabled()); // In-memory message anchor has been removed.
         QCOMPARE(frame->window(), window.data());
         QCOMPARE(window->findChild<QMediaPlayer *>(), media.data());
         QCOMPARE(opener.opens, 1);
