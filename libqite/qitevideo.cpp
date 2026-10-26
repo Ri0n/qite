@@ -386,9 +386,14 @@ private:
 
     void updateWindowButton()
     {
-        windowButton->setToolTip(floating && inlineViewport ? ITEVideoController::tr("Return to chat")
+        const bool fullscreen = floating && floating->isFullscreenMode();
+        windowButton->setToolTip(fullscreen ? ITEVideoController::tr("Open in separate window")
+                                     : floating && inlineViewport ? ITEVideoController::tr("Return to chat")
                                      : floating ? ITEVideoController::tr("Video window")
                                                 : ITEVideoController::tr("Open in separate window"));
+        // With no chat anchor a normal detached window is already the only
+        // place the player can live; there is nowhere for this button to go.
+        windowButton->setEnabled(!floating || inlineViewport || fullscreen);
         windowButton->setAccessibleName(windowButton->toolTip());
     }
 
