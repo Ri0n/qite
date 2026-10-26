@@ -38,17 +38,22 @@ protected:
     }
 };
 
-class FullscreenVideo : public QWidget {
+// This top-level window owns the VideoPlayer while it is undocked. The chat
+// controller holds only a weak pointer, so chat-log pruning cannot stop playback.
+class VideoWindow : public QWidget {
 public:
-    FullscreenVideo(QWidget *owner, QWidget *frame, QWidget *controls, std::function<void()> exit) :
-        QWidget(owner->window(), Qt::Window), frame(frame), controls(controls), exit(std::move(exit))
+    VideoWindow(QWidget *owner, QWidget *frame, QWidget *controls, std::function<void()> close,
+                std::function<void()> exitFullscreen) :
+        QWidget(nullptr, Qt::Window), owner(owner), frame(frame), controls(controls),
+        closeAction(std::move(close)), exitFullscreenAction(std::move(exitFullscreen))
     {
-        setObjectName(QStringLiteral("qite-video-fullscreen"));
+        setObjectName(QStringLiteral("qite-video-window"));
+        setWindowTitle(ITEVideoController::tr("Video"));
         setAttribute(Qt::WA_OpaquePaintEvent);
         setMouseTracking(true);
-        frame->setParent(this);
-        controls->setParent(this);
-        const auto widgets = findChildren<QWidget *>();
+        owner->setParent(this);
+        owner->show();
+        const auto widgets = owner->findChildren<QWidget *>();
         for (auto widget : widgets) {
             widget->setMouseTracking(true);
             widget->installEventFilter(this);
@@ -56,27 +61,54 @@ public:
         hideTimer.setSingleShot(true);
         hideTimer.setInterval(2000);
         connect(&hideTimer, &QTimer::timeout, this, [this] {
-            const auto slider = this->controls->findChild<QSlider *>();
-            if (this->controls->underMouse() || (slider && slider->isSliderDown())) {
+            const auto slider = controls->findChild<QSlider *>();
+            if (controls->underMouse() || (slider && slider->isSliderDown())) {
                 hideTimer.start();
                 return;
             }
-            this->controls->hide();
-            this->frame->setCursor(Qt::BlankCursor);
+            controls->hide();
+            frame->setCursor(Qt::BlankCursor);
             setCursor(Qt::BlankCursor);
         });
         auto escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
-        connect(escape, &QShortcut::activated, this, [this] { requestExit(); });
-        frame->show();
-        showControls();
+        connect(escape, &QShortcut::activated, this, [this] {
+            if (fullscreenMode)
+                requestExitFullscreen();
+        });
     }
 
-    void deactivate()
+    bool isFullscreenMode() const { return fullscreenMode; }
+
+    void setFullscreenMode(bool enable)
     {
-        active = false;
+        if (fullscreenMode == enable)
+            return;
+        fullscreenMode = enable;
         hideTimer.stop();
-        exit = {};
         frame->unsetCursor();
+        unsetCursor();
+        if (enable) {
+            owner->layout()->removeWidget(frame);
+            owner->layout()->removeWidget(controls);
+            frame->setParent(this);
+            controls->setParent(this);
+            frame->show();
+            setObjectName(QStringLiteral("qite-video-fullscreen"));
+            showFullScreen();
+            resizeChildren();
+            showControls();
+        } else {
+            frame->setParent(owner);
+            controls->setParent(owner);
+            auto layout = static_cast<QBoxLayout *>(owner->layout());
+            layout->addWidget(frame, 1);
+            layout->addWidget(controls);
+            frame->show();
+            controls->show();
+            setObjectName(QStringLiteral("qite-video-window"));
+            showNormal();
+            resizeChildren();
+        }
     }
 
 protected:
@@ -85,59 +117,72 @@ protected:
         QPainter painter(this);
         painter.fillRect(rect(), Qt::black);
     }
-    void resizeEvent(QResizeEvent *) override
-    {
-        if (!active)
-            return;
-        frame->setGeometry(rect());
-        const int height = controls->sizeHint().height();
-        controls->setGeometry(12, qMax(0, this->height() - height - 12), qMax(0, width() - 24), height);
-        controls->raise();
-    }
+
+    void resizeEvent(QResizeEvent *) override { resizeChildren(); }
+
     void closeEvent(QCloseEvent *event) override
     {
         event->ignore();
-        requestExit();
+        if (closeAction)
+            closeAction();
     }
+
     void changeEvent(QEvent *event) override
     {
         QWidget::changeEvent(event);
-        if (event->type() != QEvent::WindowStateChange || !active)
+        if (event->type() != QEvent::WindowStateChange || !fullscreenMode)
             return;
         if (isFullScreen()) {
             wasFullscreen = true;
         } else if (wasFullscreen && !isMinimized()) {
-            // A window-manager action can leave fullscreen independently of
-            // our button. Restore inline after the native state change ends.
             QTimer::singleShot(0, this, [this] {
-                if (active && !isFullScreen() && !isMinimized())
-                    requestExit();
+                if (fullscreenMode && !isFullScreen() && !isMinimized())
+                    requestExitFullscreen();
             });
         }
     }
+
     bool eventFilter(QObject *, QEvent *event) override
     {
-        if (active
+        if (fullscreenMode
             && (event->type() == QEvent::MouseMove || event->type() == QEvent::Enter
                 || event->type() == QEvent::KeyPress))
             showControls();
         return false;
     }
-    void mouseMoveEvent(QMouseEvent *) override { showControls(); }
+
+    void mouseMoveEvent(QMouseEvent *) override
+    {
+        if (fullscreenMode)
+            showControls();
+    }
+
     void keyPressEvent(QKeyEvent *event) override
     {
-        if (event->key() == Qt::Key_Escape) {
+        if (fullscreenMode && event->key() == Qt::Key_Escape) {
             event->accept();
-            requestExit();
+            requestExitFullscreen();
         } else {
             QWidget::keyPressEvent(event);
         }
     }
 
 private:
+    void resizeChildren()
+    {
+        if (fullscreenMode) {
+            frame->setGeometry(rect());
+            const int height = controls->sizeHint().height();
+            controls->setGeometry(12, qMax(0, this->height() - height - 12), qMax(0, width() - 24), height);
+            controls->raise();
+        } else {
+            owner->setGeometry(rect());
+        }
+    }
+
     void showControls()
     {
-        if (!active)
+        if (!fullscreenMode)
             return;
         frame->unsetCursor();
         setCursor(Qt::ArrowCursor);
@@ -145,19 +190,21 @@ private:
         controls->raise();
         hideTimer.start();
     }
-    void requestExit()
+
+    void requestExitFullscreen()
     {
-        const auto callback = exit;
-        if (callback)
-            callback();
+        if (exitFullscreenAction)
+            exitFullscreenAction();
     }
 
+    QWidget              *owner;
     QWidget              *frame;
     QWidget              *controls;
-    std::function<void()> exit;
+    std::function<void()> closeAction;
+    std::function<void()> exitFullscreenAction;
     QTimer                hideTimer;
-    bool                  active        = true;
-    bool                  wasFullscreen = false;
+    bool                  fullscreenMode = false;
+    bool                  wasFullscreen  = false;
 };
 
 class VideoPlayer : public QWidget {
