@@ -4,12 +4,23 @@ Allows to manage interactive elements on QTextEdit.
 
 `ITEVideoController` embeds an inline video player with play/pause, seeking and
 elapsed time. It accepts a URL or the same `ITEMediaOpener` used by audio.
-The fullscreen button (or double click on the image) opens the same player in a
-fullscreen window, without reopening the media. Exit with the button, Escape,
-double click or the window close action. Controls appear on mouse movement and
-hide after two seconds of inactivity; they remain visible while being used.
+The **Open in separate window** button next to fullscreen transfers the existing
+player, decoder and stream into a standalone, resizable window without restarting
+playback. The fullscreen button (or double click on the image) switches the same
+player into fullscreen; its controls overlay the video and hide after two seconds
+of inactivity. Exiting fullscreen returns to the chat if fullscreen was opened
+there, or to the separate window if fullscreen was entered from that window.
+The pop-out button also switches a fullscreen player into a normal window.
+
+The top-level window owns the player. While in a separate window or fullscreen,
+scrolling the original message out of view, pruning its message from the chat
+log, or destroying the chat controller does not stop playback. When the message
+still exists, closing the window docks the player back into the chat. When the
+message is gone, leaving fullscreen keeps a normal standalone window and closing
+that window releases the player/decoder/stream. Only a player still embedded in
+the chat pauses when hidden or scrolled entirely out of view.
+
 Playback is lazy: merely displaying a message does not open the source.
-Scrolling the player completely out of view or hiding the editor pauses playback.
 
 The text document holds a fixed-size object, while an opaque viewport child
 contains a frame widget and the controls. Video frames and playback progress never
