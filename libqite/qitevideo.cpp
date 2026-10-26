@@ -23,6 +23,8 @@
 #include <QVBoxLayout>
 #include <functional>
 
+Q_DECLARE_METATYPE(QPointer<ITEMediaOpener>)
+
 namespace {
 enum Property { Source = InteractiveTextFormat::UserProperty, Opener, Size, Downloadable };
 
@@ -61,13 +63,13 @@ public:
         hideTimer.setSingleShot(true);
         hideTimer.setInterval(2000);
         connect(&hideTimer, &QTimer::timeout, this, [this] {
-            const auto slider = controls->findChild<QSlider *>();
-            if (controls->underMouse() || (slider && slider->isSliderDown())) {
+            const auto slider = this->controls->findChild<QSlider *>();
+            if (this->controls->underMouse() || (slider && slider->isSliderDown())) {
                 hideTimer.start();
                 return;
             }
-            controls->hide();
-            frame->setCursor(Qt::BlankCursor);
+            this->controls->hide();
+            this->frame->setCursor(Qt::BlankCursor);
             setCursor(Qt::BlankCursor);
         });
         auto escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
@@ -209,11 +211,11 @@ private:
 
 class VideoPlayer : public QWidget {
 public:
-    VideoPlayer(const QTextFormat &format, QWidget *parent, std::function<void()> download,
+    VideoPlayer(const QTextFormat &format, QWidget *parent, ITEVideoController *controller,
                 std::function<void()> docked) :
         QWidget(parent), source(format.property(Source).toUrl()), originalSource(source),
-        opener(static_cast<ITEMediaOpener *>(format.property(Opener).value<void *>())),
-        inlineViewport(parent), onDocked(std::move(docked))
+        opener(format.property(Opener).value<QPointer<ITEMediaOpener>>()), requiresOpener(format.hasProperty(Opener)),
+        inlineViewport(parent), downloadController(controller), onDocked(std::move(docked))
     {
         setObjectName(QStringLiteral("qite-video-player"));
         setCursor(Qt::ArrowCursor);
@@ -266,9 +268,11 @@ public:
             downloadButton->setIcon(
                 QIcon::fromTheme(QStringLiteral("document-save"), style()->standardIcon(QStyle::SP_DialogSaveButton)));
             row->addWidget(downloadButton);
-            connect(downloadButton, &QToolButton::clicked, this, [download] { download(); });
+            connect(downloadButton, &QToolButton::clicked, controller,
+                    [controller, source = originalSource] { emit controller->downloadRequested(source); });
             auto updateDownload = [this] {
-                downloadButton->setEnabled(!mediaState || !mediaState->downloading());
+                downloadButton->setEnabled(downloadController && (!requiresOpener || opener)
+                                           && (!mediaState || !mediaState->downloading()));
                 downloadButton->setToolTip(iteMediaDownloadText(mediaState));
                 downloadButton->setAccessibleName(downloadButton->toolTip());
             };
@@ -276,6 +280,7 @@ public:
                 connect(mediaState, &ITEMediaState::changed, this, updateDownload);
                 connect(mediaState, &QObject::destroyed, this, updateDownload);
             }
+            connect(controller, &QObject::destroyed, this, updateDownload);
             updateDownload();
         }
         windowButton = new QToolButton(controls);
@@ -323,6 +328,10 @@ public:
             if (!slider->isSliderDown())
                 seek();
         });
+        if (opener)
+            connect(opener, &QObject::destroyed, this, [this] { sourceUnavailable(); });
+        else if (requiresOpener)
+            sourceUnavailable();
     }
 
     ~VideoPlayer() override
@@ -485,8 +494,26 @@ private:
         button->setAccessibleName(button->toolTip());
     }
 
+    void sourceUnavailable()
+    {
+        // QObject emits destroyed before deleting its child devices. Release
+        // the decoder first; the dying opener can no longer service close().
+        delete player;
+        player = nullptr;
+        stream = nullptr;
+        updateState(false);
+        button->setEnabled(false);
+        slider->setEnabled(false);
+        if (downloadButton)
+            downloadButton->setEnabled(false);
+        time->setText(ITEVideoController::tr("Media source unavailable"));
+        time->setToolTip(ITEVideoController::tr("The media source was closed by the application."));
+    }
+
     void toggle()
     {
+        if (requiresOpener && !opener)
+            return;
         const bool retry = player
             && (player->error() != QMediaPlayer::NoError || (mediaState && !mediaState->sourceError().isEmpty()));
         if (player && (retry || (opener && player->mediaStatus() == QMediaPlayer::EndOfMedia))) {
@@ -558,26 +585,28 @@ private:
         button->setToolTip(detail);
     }
 
-    QUrl                      source;
-    QUrl                      originalSource;
-    ITEMediaOpener           *opener;
-    QPointer<QIODevice>       stream;
-    QMediaPlayer             *player = nullptr;
-    ITEVideoFrameWidget      *video;
-    QVBoxLayout              *layout;
-    QWidget                  *controls;
-    QToolButton              *windowButton;
-    QToolButton              *fullscreenButton;
-    QPointer<VideoWindow>     floating;
-    QPointer<QWidget>         inlineViewport;
-    std::function<void()>     onDocked;
-    bool                      movingToWindow = false;
-    bool                      returnInlineOnFullscreenExit = false;
-    QToolButton              *button;
-    ITEMediaSlider           *slider;
-    QToolButton              *downloadButton = nullptr;
-    QPointer<ITEMediaState>   mediaState;
-    QLabel                   *time;
+    QUrl                         source;
+    QUrl                         originalSource;
+    QPointer<ITEMediaOpener>     opener;
+    const bool                   requiresOpener;
+    QPointer<QIODevice>          stream;
+    QMediaPlayer                *player = nullptr;
+    ITEVideoFrameWidget         *video;
+    QVBoxLayout                 *layout;
+    QWidget                     *controls;
+    QToolButton                 *windowButton;
+    QToolButton                 *fullscreenButton;
+    QPointer<VideoWindow>        floating;
+    QPointer<QWidget>            inlineViewport;
+    QPointer<ITEVideoController> downloadController;
+    std::function<void()>        onDocked;
+    bool                         movingToWindow               = false;
+    bool                         returnInlineOnFullscreenExit = false;
+    QToolButton                 *button;
+    ITEMediaSlider              *slider;
+    QToolButton                 *downloadButton = nullptr;
+    QPointer<ITEMediaState>      mediaState;
+    QLabel                      *time;
 };
 }
 
@@ -639,14 +668,7 @@ public:
             const QRect rect    = q->itc->elementRect(entry.cursor).translated(-offset);
             const bool  visible = rect.isValid() && rect.intersects(edit->viewport()->rect());
             if (visible && !entry.widget) {
-                const auto source = entry.cursor.charFormat().property(Source).toUrl();
-                entry.widget = new VideoPlayer(
-                    entry.cursor.charFormat(), edit->viewport(),
-                    [controller = QPointer<ITEVideoController>(q), source] {
-                        if (controller)
-                            emit controller->downloadRequested(source);
-                    },
-                    [this] { schedule(); });
+                entry.widget = new VideoPlayer(entry.cursor.charFormat(), edit->viewport(), q, [this] { schedule(); });
             }
             if (entry.widget && !entry.widget->isFloating()) {
                 // Never hide/reparent an undocked player as the chat scrolls.
@@ -675,7 +697,8 @@ QTextCharFormat ITEVideoController::makeFormat(const QUrl &source, ITEMediaOpene
 {
     InteractiveTextFormat format(objectType, itc->nextId());
     format.setProperty(Source, source);
-    format.setProperty(Opener, QVariant::fromValue<void *>(opener));
+    if (opener)
+        format.setProperty(Opener, QVariant::fromValue(QPointer<ITEMediaOpener>(opener)));
     format.setProperty(Size, size.expandedTo(QSize(160, 120)));
     format.setProperty(Downloadable, downloadable);
     format.setVerticalAlignment(QTextCharFormat::AlignNormal);

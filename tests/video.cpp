@@ -16,6 +16,7 @@
 #include <QSignalSpy>
 #include <QSlider>
 #include <QSplitter>
+#include <QStyleOptionSlider>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
@@ -76,6 +77,17 @@ public:
     }
 };
 
+class TestMediaSlider : public ITEMediaSlider {
+public:
+    QPoint positionForValue(int value) const
+    {
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        option.sliderPosition = value;
+        return style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this).center();
+    }
+};
+
 class StateOpener : public ITEMediaOpener {
 public:
     ITEMediaState state;
@@ -88,6 +100,30 @@ public:
     void           close(QIODevice *) override { }
     QVariant       metadata(const QUrl &) override { return QVariantMap(); }
     ITEMediaState *mediaState(const QUrl &) override { return &state; }
+};
+
+// A real opener-owned stream, unlike StateOpener's URL-only fixture.
+class BufferOpener : public ITEMediaOpener {
+public:
+    int                 opens = 0, closes = 0;
+    QPointer<QIODevice> device;
+    QIODevice          *open(QUrl &) override
+    {
+        ++opens;
+        auto  buffer = new QBuffer(this);
+        QFile file(QStringLiteral(QITE_TEST_VIDEO));
+        if (file.open(QIODevice::ReadOnly))
+            buffer->setData(file.readAll());
+        buffer->open(QIODevice::ReadOnly);
+        device = buffer;
+        return buffer;
+    }
+    void close(QIODevice *stream) override
+    {
+        ++closes;
+        delete stream;
+    }
+    QVariant metadata(const QUrl &) override { return {}; }
 };
 
 class AudioController : public ITEAudioController {
@@ -150,7 +186,7 @@ private slots:
 
     void videoSliderClickSeeksToAbsolutePosition()
     {
-        ITEMediaSlider slider;
+        TestMediaSlider slider;
         slider.setRange(0, 10000);
         slider.setPageStep(25); // A normal QSlider moves only one page per groove click.
         slider.resize(520, 35);
@@ -159,8 +195,7 @@ private slots:
 
         const auto clickAt = [&slider](int percent) {
             // Stay clear of the handle and use the center of the groove.
-            QTest::mouseClick(&slider, Qt::LeftButton, Qt::NoModifier,
-                              QPoint(slider.width() * percent / 100, slider.height() / 2));
+            QTest::mouseClick(&slider, Qt::LeftButton, Qt::NoModifier, slider.positionForValue(percent * 100));
             QVERIFY2(qAbs(slider.value() - percent * 100) <= 100,
                      qPrintable(QStringLiteral("clicked %1% but slider value is %2")
                                     .arg(percent).arg(slider.value())));
@@ -168,7 +203,7 @@ private slots:
         clickAt(80);
         clickAt(20);
         clickAt(95);
-        // 80% of a two-hour video must be about 96 minutes, not 5 seconds
+        // 95% of a two-hour video must be about 114 minutes, not 5 seconds
         // nearer to the previous position.
         const qint64 duration = 120LL * 60 * 1000;
         QVERIFY(qAbs(duration * slider.value() / slider.maximum() - duration * 95 / 100) <= 72000);
@@ -221,12 +256,16 @@ private slots:
         QCOMPARE(opener.opens, 0); // Saving does not start playback.
         edit.findChild<QToolButton *>("qite-video-fullscreen-button")->click();
         QTRY_VERIFY(download->window()->isFullScreen());
+        QPointer<QWidget> fullscreen = download->window();
         download->click();
         QCOMPARE(requested.count(), 2);
         QCOMPARE(opener.opens, 0);
         edit.clear();
         QTest::qWait(20);
-        opener.state.setCachedRanges({}); // Deleted player must disconnect safely.
+        opener.state.setCachedRanges({}); // Detached player still observes the shared state.
+        fullscreen->close();
+        QTRY_VERIFY(fullscreen.isNull());
+        opener.state.setCachedRanges({ { 0, .5 } }); // Closed player disconnects safely.
     }
 
     void audioDownloadAndCache()
@@ -484,12 +523,13 @@ private slots:
         StateOpener opener;
         QPointer<QWidget> detached;
         QPointer<QMediaPlayer> media;
+        QPointer<QToolButton>  download;
         {
             TextEdit edit;
             InteractiveText text(&edit);
             {
                 VideoController video(&text);
-                video.insert(QUrl(QStringLiteral("test:video")), &opener);
+                video.insert(QUrl(QStringLiteral("test:video")), &opener, QSize(320, 220), true);
                 edit.show();
                 QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
                 auto widget = edit.findChild<ITEVideoFrameWidget *>()->parentWidget();
@@ -497,6 +537,8 @@ private slots:
                 QVERIFY(play);
                 play->click();
                 media = widget->findChild<QMediaPlayer *>();
+                download = widget->findChild<QToolButton *>(QStringLiteral("qite-video-download"));
+                QVERIFY(download && download->isEnabled());
                 QVERIFY(media);
                 auto detach = widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"));
                 QVERIFY(detach);
@@ -505,6 +547,9 @@ private slots:
                 QVERIFY(detached && detached->isVisible());
             } // The controller no longer owns the detached player.
             QVERIFY(detached && detached->isVisible());
+            QVERIFY(download && !download->isEnabled());
+            opener.state.setCachedRanges({ { 0, 1 } });
+            QVERIFY(!download->isEnabled());
         } // Even destroying QTextEdit leaves the top-level video window.
         QVERIFY(detached && detached->isVisible());
         QVERIFY(media);
@@ -577,6 +622,83 @@ private slots:
         window->close();
         QTRY_VERIFY(window.isNull());
         QVERIFY(player.isNull());
+    }
+
+    void detachedStreamSurvivesChatAndClosesOnce()
+    {
+        BufferOpener           opener;
+        QPointer<QWidget>      detached;
+        QPointer<QMediaPlayer> media;
+        {
+            TextEdit        edit;
+            InteractiveText text(&edit);
+            VideoController video(&text);
+            video.insert(QUrl::fromLocalFile(QStringLiteral(QITE_TEST_VIDEO)), &opener);
+            edit.show();
+            QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+            auto widget = edit.findChild<ITEVideoFrameWidget *>()->parentWidget();
+            widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"))->click();
+            media = widget->findChild<QMediaPlayer *>();
+            widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"))->click();
+            detached = widget->window();
+            QCOMPARE(opener.opens, 1);
+            QVERIFY(opener.device);
+        }
+        QVERIFY(detached && media && opener.device);
+        QCOMPARE(opener.closes, 0);
+        detached->close();
+        QTRY_VERIFY(detached.isNull());
+        QVERIFY(media.isNull());
+        QVERIFY(opener.device.isNull());
+        QCOMPARE(opener.closes, 1);
+    }
+
+    void openerCanDieBeforeDetachedWindow()
+    {
+        auto                   opener = new BufferOpener;
+        QPointer<QWidget>      detached;
+        QPointer<QWidget>      widget;
+        QPointer<QMediaPlayer> media;
+        QPointer<QIODevice>    device;
+        {
+            TextEdit        edit;
+            InteractiveText text(&edit);
+            VideoController video(&text);
+            video.insert(QUrl::fromLocalFile(QStringLiteral(QITE_TEST_VIDEO)), opener);
+            edit.show();
+            QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+            widget = edit.findChild<ITEVideoFrameWidget *>()->parentWidget();
+            widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"))->click();
+            widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"))->click();
+            detached = widget->window();
+            media    = widget->findChild<QMediaPlayer *>();
+            device   = opener->device;
+        }
+        delete opener; // PsiAccount deletes its FileSharingDeviceOpener after closing chats.
+        QVERIFY(detached && widget);
+        QVERIFY(media.isNull());
+        QVERIFY(device.isNull());
+        QVERIFY(!widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"))->isEnabled());
+        detached->close();
+        QTRY_VERIFY(detached.isNull());
+    }
+
+    void openerCanDieBeforePlayerMaterialization()
+    {
+        TextEdit        edit;
+        InteractiveText text(&edit);
+        VideoController video(&text);
+        {
+            BufferOpener opener;
+            video.insert(QUrl::fromLocalFile(QStringLiteral(QITE_TEST_VIDEO)), &opener);
+        }
+        edit.show();
+        QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+        auto widget = edit.findChild<ITEVideoFrameWidget *>()->parentWidget();
+        auto play   = widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"));
+        QVERIFY(play && !play->isEnabled());
+        play->click();
+        QVERIFY(!widget->findChild<QMediaPlayer *>());
     }
 
     void resizeStress()
@@ -720,7 +842,7 @@ private slots:
         auto fullscreenButton = edit.findChild<QToolButton *>(QStringLiteral("qite-video-fullscreen-button"));
         fullscreenButton->click();
         QVERIFY(fullscreenButton->window()->isFullScreen());
-        QCOMPARE(edit.findChild<QMediaPlayer *>(), player);
+        QCOMPARE(fullscreenButton->window()->findChild<QMediaPlayer *>(), player);
         QCOMPARE(opener.opened, 1);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         QCOMPARE(player->playbackState(), QMediaPlayer::PlayingState);
