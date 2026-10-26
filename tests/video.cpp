@@ -148,6 +148,42 @@ private slots:
         QVERIFY(iteMediaDownloadText(&state).contains("network error"));
     }
 
+    void videoSliderClickSeeksToAbsolutePosition()
+    {
+        ITEMediaSlider slider;
+        slider.setRange(0, 10000);
+        slider.setPageStep(25); // A normal QSlider moves only one page per groove click.
+        slider.resize(520, 35);
+        slider.show();
+        QTRY_VERIFY(slider.isVisible());
+
+        const auto clickAt = [&slider](int percent) {
+            // Stay clear of the handle and use the center of the groove.
+            QTest::mouseClick(&slider, Qt::LeftButton, Qt::NoModifier,
+                              QPoint(slider.width() * percent / 100, slider.height() / 2));
+            QVERIFY2(qAbs(slider.value() - percent * 100) <= 100,
+                     qPrintable(QStringLiteral("clicked %1% but slider value is %2")
+                                    .arg(percent).arg(slider.value())));
+        };
+        clickAt(80);
+        clickAt(20);
+        clickAt(95);
+        // 80% of a two-hour video must be about 96 minutes, not 5 seconds
+        // nearer to the previous position.
+        const qint64 duration = 120LL * 60 * 1000;
+        QVERIFY(qAbs(duration * slider.value() / slider.maximum() - duration * 95 / 100) <= 72000);
+
+        // Normal handle clicks still enter Qt's drag mode.
+        slider.setValue(5000); // Handle is centered across desktop styles.
+        QSignalSpy pressed(&slider, &QSlider::sliderPressed);
+        QTest::mousePress(&slider, Qt::LeftButton, Qt::NoModifier,
+                          slider.rect().center());
+        QCOMPARE(pressed.count(), 1);
+        QVERIFY(slider.isSliderDown());
+        QTest::mouseRelease(&slider, Qt::LeftButton);
+        QVERIFY(!slider.isSliderDown());
+    }
+
     void videoDownloadAndCache()
     {
         TextEdit        edit;
@@ -800,6 +836,9 @@ private slots:
         QTRY_VERIFY(slider->isEnabled());
         slider->setValue(5000); // Also exercises keyboard/page-step seek handling.
         QTRY_VERIFY(qAbs(player->position() - player->duration() / 2) < 100);
+        QTest::mouseClick(slider, Qt::LeftButton, Qt::NoModifier,
+                          QPoint(slider->width() * 3 / 4, slider->height() / 2));
+        QTRY_VERIFY(qAbs(player->position() - player->duration() * 3 / 4) < 130);
         button->click();
         edit.hide();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
