@@ -209,9 +209,11 @@ private:
 
 class VideoPlayer : public QWidget {
 public:
-    VideoPlayer(const QTextFormat &format, QWidget *parent, std::function<void()> download) :
+    VideoPlayer(const QTextFormat &format, QWidget *parent, std::function<void()> download,
+                std::function<void()> docked) :
         QWidget(parent), source(format.property(Source).toUrl()), originalSource(source),
-        opener(static_cast<ITEMediaOpener *>(format.property(Opener).value<void *>()))
+        opener(static_cast<ITEMediaOpener *>(format.property(Opener).value<void *>())),
+        inlineViewport(parent), onDocked(std::move(docked))
     {
         setObjectName(QStringLiteral("qite-video-player"));
         setCursor(Qt::ArrowCursor);
@@ -276,13 +278,35 @@ public:
             }
             updateDownload();
         }
+        windowButton = new QToolButton(controls);
+        windowButton->setObjectName(QStringLiteral("qite-video-window-button"));
+        windowButton->setIcon(style()->standardIcon(QStyle::SP_TitleBarNormalButton));
+        updateWindowButton();
+        row->addWidget(windowButton);
         fullscreenButton = new QToolButton(controls);
         fullscreenButton->setObjectName(QStringLiteral("qite-video-fullscreen-button"));
         updateFullscreenButton();
         row->addWidget(fullscreenButton);
         layout->addWidget(controls);
+        connect(windowButton, &QToolButton::clicked, this, [this] {
+            if (!floating) {
+                openWindow(false);
+            } else if (floating->isFullscreenMode()) {
+                // The pop-out button turns a fullscreen player into a regular
+                // standalone window, without reattaching it to the chat.
+                returnInlineOnFullscreenExit = false;
+                floating->setFullscreenMode(false);
+                updateFullscreenButton();
+                updateWindowButton();
+            } else if (inlineViewport) {
+                dock();
+            } else {
+                floating->raise();
+                floating->activateWindow();
+            }
+        });
         connect(fullscreenButton, &QToolButton::clicked, this, [this] {
-            if (fullscreen)
+            if (floating && floating->isFullscreenMode())
                 leaveFullscreen();
             else
                 enterFullscreen();
@@ -302,7 +326,7 @@ public:
 
     ~VideoPlayer() override
     {
-        leaveFullscreen();
+        // The floating VideoWindow, if present, owns this VideoPlayer.
         // Detach the device/output before closing an opener-owned stream.
         delete player;
         if (stream && opener)
@@ -315,6 +339,18 @@ public:
             player->pause();
     }
 
+    bool isFloating() const { return !floating.isNull(); }
+
+    void orphan()
+    {
+        // Called when the document loses its attachment or its controller is
+        // destroyed. A detached window remains the player's sole owner.
+        inlineViewport = nullptr;
+        onDocked = {};
+        returnInlineOnFullscreenExit = false;
+        updateWindowButton();
+    }
+
 protected:
     void paintEvent(QPaintEvent *) override
     {
@@ -323,7 +359,7 @@ protected:
     }
     void hideEvent(QHideEvent *event) override
     {
-        if (!fullscreen)
+        if (!floating && !movingToWindow)
             pause();
         QWidget::hideEvent(event);
     }
@@ -339,40 +375,101 @@ protected:
 private:
     void updateFullscreenButton()
     {
+        const bool fullscreen = floating && floating->isFullscreenMode();
         fullscreenButton->setIcon(
             style()->standardIcon(fullscreen ? QStyle::SP_TitleBarNormalButton : QStyle::SP_TitleBarMaxButton));
         fullscreenButton->setToolTip(fullscreen ? ITEVideoController::tr("Exit full screen")
                                                 : ITEVideoController::tr("Full screen"));
         fullscreenButton->setAccessibleName(fullscreenButton->toolTip());
     }
-    void enterFullscreen()
+
+    void updateWindowButton()
     {
-        layout->removeWidget(video);
-        layout->removeWidget(controls);
-        fullscreen = new FullscreenVideo(this, video, controls, [this] { leaveFullscreen(); });
-        updateFullscreenButton();
-        fullscreen->showFullScreen();
-        fullscreen->activateWindow();
-        fullscreen->setFocus();
+        windowButton->setToolTip(floating && inlineViewport ? ITEVideoController::tr("Return to chat")
+                                     : floating ? ITEVideoController::tr("Video window")
+                                                : ITEVideoController::tr("Open in separate window"));
+        windowButton->setAccessibleName(windowButton->toolTip());
     }
+
+    void openWindow(bool fullscreenMode)
+    {
+        if (!floating) {
+            movingToWindow = true;
+            // The window becomes the QObject parent of the complete player.
+            // Reparenting does not recreate QMediaPlayer or reopen the stream.
+            auto window = new VideoWindow(this, video, controls, [this] { closeWindow(); },
+                                          [this] { leaveFullscreen(); });
+            floating = window;
+            window->resize(qMax(480, width()), qMax(320, height()));
+            returnInlineOnFullscreenExit = fullscreenMode;
+            if (fullscreenMode)
+                window->setFullscreenMode(true);
+            else
+                window->show();
+            movingToWindow = false;
+        } else if (fullscreenMode) {
+            returnInlineOnFullscreenExit = false;
+            floating->setFullscreenMode(true);
+        }
+        if (floating) {
+            floating->raise();
+            floating->activateWindow();
+        }
+        updateFullscreenButton();
+        updateWindowButton();
+    }
+
+    void enterFullscreen() { openWindow(true); }
+
     void leaveFullscreen()
     {
-        if (!fullscreen)
+        if (!floating || !floating->isFullscreenMode())
             return;
-        auto window = fullscreen.data();
-        fullscreen  = nullptr;
-        window->deactivate();
-        video->setParent(this);
-        controls->setParent(this);
-        layout->addWidget(video, 1);
-        layout->addWidget(controls);
-        video->show();
-        controls->show();
+        floating->setFullscreenMode(false);
+        if (returnInlineOnFullscreenExit && inlineViewport) {
+            dock();
+            return;
+        }
+        returnInlineOnFullscreenExit = false;
         updateFullscreenButton();
+        updateWindowButton();
+    }
+
+    void dock()
+    {
+        if (!floating || !inlineViewport)
+            return;
+        auto *window = floating.data();
+        if (window->isFullscreenMode())
+            window->setFullscreenMode(false);
+        // Transfer ownership back to the chat before deleting the empty host.
+        setParent(inlineViewport);
+        floating = nullptr;
+        returnInlineOnFullscreenExit = false;
+        show();
         window->hide();
         window->deleteLater();
-        if (!isVisible())
-            pause();
+        updateFullscreenButton();
+        updateWindowButton();
+        if (onDocked)
+            onDocked(); // Recompute viewport visibility and placeholder geometry.
+    }
+
+    void closeWindow()
+    {
+        if (!floating)
+            return;
+        if (inlineViewport) {
+            dock();
+            return;
+        }
+        auto *window = floating.data();
+        if (window->isFullscreenMode())
+            window->setFullscreenMode(false);
+        window->hide();
+        // With no message anchor the standalone window owns the player until
+        // it closes; this releases decoder, media device and stream.
+        window->deleteLater();
     }
 
     void updateState(bool playing)
@@ -463,8 +560,13 @@ private:
     ITEVideoFrameWidget      *video;
     QVBoxLayout              *layout;
     QWidget                  *controls;
+    QToolButton              *windowButton;
     QToolButton              *fullscreenButton;
-    QPointer<FullscreenVideo> fullscreen;
+    QPointer<VideoWindow>     floating;
+    QPointer<QWidget>         inlineViewport;
+    std::function<void()>     onDocked;
+    bool                      movingToWindow = false;
+    bool                      returnInlineOnFullscreenExit = false;
     QToolButton              *button;
     ITEMediaSlider           *slider;
     QToolButton              *downloadButton = nullptr;
