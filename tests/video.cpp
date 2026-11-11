@@ -196,6 +196,31 @@ private slots:
         QVERIFY(opener.receiver.isNull());
     }
 
+    void audioPresentationHasFallbackArtWithoutDownloading()
+    {
+        class DeferredOpener : public StateOpener {
+        public:
+            CancelOpen openAsync(QUrl, QObject *, OpenDone) override { return {}; }
+        } opener;
+        QWidget host;
+        auto *widget = ITEVideoController::createPlayer(
+            QUrl(QStringLiteral("test:audio")), &opener, &host, {}, 0, true);
+        QVERIFY(widget);
+        auto *artwork = widget->findChild<QWidget *>(QStringLiteral("qite-audio-artwork"));
+        QVERIFY(artwork);
+        QVERIFY(widget->findChild<QWidget *>(QStringLiteral("qite-video-controls")));
+        QVERIFY(widget->findChild<QWidget *>(QStringLiteral("qite-video-player")));
+        host.show();
+        widget->show();
+        QCoreApplication::processEvents();
+        QVERIFY(artwork->isVisible());
+        QPixmap fallback(96, 96);
+        fallback.fill(Qt::transparent);
+        artwork->render(&fallback);
+        QVERIFY(!fallback.toImage().isNull());
+        delete widget;
+    }
+
     void failedPreparationCanBeRetried()
     {
         class FailingOpener : public StateOpener {

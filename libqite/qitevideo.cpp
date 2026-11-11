@@ -12,6 +12,8 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMediaPlayer>
+#include <QMediaMetaData>
+#include <QImage>
 #include <QPainter>
 #include <QScrollBar>
 #include <QShortcut>
@@ -36,6 +38,54 @@ protected:
         QPainter painter(this);
         painter.fillRect(rect(), Qt::black);
     }
+};
+
+// Cover art is supplied by QMediaPlayer metadata after its range-backed
+// source becomes available. Until then, draw a small music-note glyph without
+// attempting to read or download the complete audio file.
+class AudioArtworkWidget final : public QWidget {
+public:
+    explicit AudioArtworkWidget(QWidget *parent) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("qite-audio-artwork"));
+        setMinimumHeight(90);
+    }
+
+    void setCover(QImage cover)
+    {
+        cover_ = std::move(cover);
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.fillRect(rect(), Qt::black);
+        painter.setRenderHint(QPainter::Antialiasing);
+        if (!cover_.isNull()) {
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            const QSize size = cover_.size().scaled(rect().adjusted(20, 12, -20, -12).size(),
+                                                   Qt::KeepAspectRatio);
+            const QRect target(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2), size);
+            painter.drawImage(target, cover_);
+            return;
+        }
+        painter.translate(width() / 2.0, height() / 2.0);
+        const qreal scale = qMin(width() / 90.0, height() / 90.0);
+        painter.scale(scale, scale);
+        const QColor ink(190, 198, 211);
+        painter.setPen(QPen(ink, 2.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(ink);
+        painter.drawEllipse(QRectF(-22, 12, 14, 9));
+        painter.drawEllipse(QRectF(3, 6, 14, 9));
+        painter.drawLine(QPointF(-8, 17), QPointF(-8, -17));
+        painter.drawLine(QPointF(17, 11), QPointF(17, -22));
+        painter.drawLine(QPointF(-8, -17), QPointF(17, -22));
+    }
+
+private:
+    QImage cover_;
 };
 
 // This top-level window owns the VideoPlayer while it is undocked. The chat
@@ -210,7 +260,7 @@ private:
 class VideoPlayer : public QWidget {
 public:
     VideoPlayer(const QTextFormat &format, QWidget *parent, ITEVideoController *controller,
-                std::function<void()> docked) :
+                std::function<void()> docked, bool audioPresentation = false) :
         QWidget(parent), source(format.property(Source).toUrl()), originalSource(source),
         opener(format.property(Opener).value<QPointer<ITEMediaOpener>>()), requiresOpener(format.hasProperty(Opener)),
         inlineViewport(parent), downloadController(controller), onDocked(std::move(docked))
@@ -230,6 +280,11 @@ public:
         video = new ITEVideoFrameWidget(this);
         video->installEventFilter(this);
         layout->addWidget(video, 1);
+        if (audioPresentation) {
+            artwork = new AudioArtworkWidget(this);
+            layout->insertWidget(0, artwork, 1);
+            video->hide();
+        }
         controls = new VideoControls(this);
         controls->setObjectName(QStringLiteral("qite-video-controls"));
         controls->setPalette(palette);
@@ -550,6 +605,8 @@ private:
             delete player;
             player = nullptr;
             stream = nullptr;
+            if (artwork)
+                artwork->setCover({});
             source = originalSource;
             if (opener && retry)
                 opener->retry(originalSource);
@@ -561,6 +618,9 @@ private:
             inputFailed = false;
             player = new ITEMediaPlayer(this);
             video->attach(player);
+            if (artwork)
+                connect(player, QOverload<>::of(&QMediaPlayer::metaDataChanged), this,
+                        [this] { updateCoverArt(); });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             player->setAudioOutput(new QAudioOutput(player));
             connect(player, &QMediaPlayer::playbackStateChanged, this,
@@ -630,6 +690,18 @@ private:
             player->play();
     }
 
+    void updateCoverArt()
+    {
+        if (!artwork || !player)
+            return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const QImage cover = player->metaData().value(QMediaMetaData::CoverArtImage).value<QImage>();
+#else
+        const QImage cover = qvariant_cast<QImage>(player->metaData(QMediaMetaData::CoverArtImage));
+#endif
+        artwork->setCover(cover);
+    }
+
     void showError(const QString &message)
     {
         inputFailed = true;
@@ -648,6 +720,7 @@ private:
     QPointer<QIODevice>          stream;
     QMediaPlayer                *player = nullptr;
     ITEVideoFrameWidget         *video;
+    AudioArtworkWidget          *artwork = nullptr;
     QVBoxLayout                 *layout;
     QWidget                     *controls;
     QToolButton                 *windowButton;
@@ -687,13 +760,14 @@ private:
 }
 
 QWidget *ITEVideoController::createPlayer(const QUrl &url, ITEMediaOpener *opener, QWidget *parent,
-                                          std::function<void()> fullscreen, qint64 position)
+                                          std::function<void()> fullscreen, qint64 position,
+                                          bool audioPresentation)
 {
     QTextCharFormat format;
     format.setProperty(Source, url);
     if (opener)
         format.setProperty(Opener, QVariant::fromValue(QPointer<ITEMediaOpener>(opener)));
-    auto widget = new VideoPlayer(format, parent, nullptr, {});
+    auto widget = new VideoPlayer(format, parent, nullptr, {}, audioPresentation);
     widget->setHostFullscreen(std::move(fullscreen));
     widget->setInitialPosition(position);
     QTimer::singleShot(0, widget, [widget] { widget->startPlayback(); });
