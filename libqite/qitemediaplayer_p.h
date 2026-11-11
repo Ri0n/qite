@@ -25,19 +25,32 @@ public:
     {
         opener_ = opener;
         stream_ = stream;
-        if (stream) {
-            const QPointer<ITEMediaOpener> service(opener);
-            const QPointer<QIODevice>      device(stream);
-            connect(this, &QObject::destroyed, [service, device] {
-                if (service && device)
-                    service->close(device);
-            });
-        }
+        if (stream)
+            new StreamCleanup(opener, stream, this);
         if (opener)
             connect(opener, &QObject::destroyed, this, [this] { delete this; });
     }
 
 private:
+    // QObject children are destroyed after the QMediaPlayer base destructor.
+    // Qt 5 disconnects its signals during teardown, so destroyed() is too late
+    // to arrange cleanup through a connection on the player itself.
+    class StreamCleanup : public QObject {
+    public:
+        StreamCleanup(ITEMediaOpener *opener, QIODevice *stream, QObject *parent) :
+            QObject(parent), opener_(opener), stream_(stream)
+        {
+        }
+        ~StreamCleanup() override
+        {
+            if (opener_ && stream_)
+                opener_->close(stream_);
+        }
+
+    private:
+        QPointer<ITEMediaOpener> opener_;
+        QPointer<QIODevice>      stream_;
+    };
     QPointer<ITEMediaOpener> opener_;
     QPointer<QIODevice>      stream_;
 };
