@@ -195,7 +195,13 @@ private slots:
         auto    player = ITEVideoController::createPlayer(QUrl("test:video"), &opener, &host, [&] { ++fullscreen; });
         QTRY_COMPARE(opener.pending, 1);
         QVERIFY(!player->findChild<QLabel *>("qite-video-loading")->isHidden());
-        player->findChild<QToolButton *>("qite-video-fullscreen-button")->click();
+        auto *fullscreenButton = player->findChild<QToolButton *>("qite-video-fullscreen-button");
+        auto *playButton = player->findChild<QToolButton *>("qite-video-play");
+        QVERIFY(fullscreenButton);
+        QVERIFY(playButton);
+        QVERIFY(fullscreenButton->isHidden()); // Host viewer already provides fullscreen.
+        QVERIFY(playButton->autoRaise());
+        fullscreenButton->click(); // Programmatic host callback remains functional.
         QCOMPARE(fullscreen, 1);
         QVERIFY(player->findChild<QToolButton *>("qite-video-window-button")->isHidden());
         delete player;
@@ -400,6 +406,13 @@ private slots:
         video.insert(url, &opener);
         edit.show();
         QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
+        auto *controls = edit.findChild<QWidget *>("qite-video-controls");
+        QVERIFY(controls);
+        QVERIFY(controls->styleSheet().contains(QStringLiteral("background: transparent")));
+        auto *standaloneFullscreen = controls->findChild<QToolButton *>("qite-video-fullscreen-button");
+        auto *standalonePlay = controls->findChild<QToolButton *>("qite-video-play");
+        QVERIFY(standaloneFullscreen && !standaloneFullscreen->isHidden());
+        QVERIFY(standalonePlay && standalonePlay->autoRaise());
         QVERIFY(!edit.findChild<QToolButton *>("qite-video-download"));
         edit.clear();
         video.insert(url, &opener, QSize(320, 220), true);
