@@ -332,7 +332,7 @@ private slots:
         QTRY_VERIFY(slider.isVisible());
         const QImage empty = slider.grab().toImage();
 
-        // A verified contiguous prefix starts at the same logical zero as
+        // A known contiguous cached prefix starts at the same logical zero as
         // playback. No native groove should paint a second colored prefix.
         state.setCachedRanges({ { 0, .95 } });
         const QImage painted = slider.grab().toImage();
