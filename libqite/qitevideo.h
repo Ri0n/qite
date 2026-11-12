@@ -22,6 +22,17 @@ public:
         const auto handler = windowHandler_;
         return handler && handler(source, position, fullscreen);
     }
+    // Optional zero-interruption transfer. The host borrows the existing
+    // player QWidget (and therefore its QMediaPlayer/stream), rather than
+    // opening a duplicate decoder at the requested position. When finished,
+    // it calls restore(), which returns false if the chat anchor is gone.
+    using PlayerTransferHandler = std::function<bool(const QUrl &, QWidget *, std::function<bool()>, bool)>;
+    void setPlayerTransferHandler(PlayerTransferHandler handler) { playerTransferHandler_ = std::move(handler); }
+    bool requestPlayerTransfer(const QUrl &source, QWidget *player, std::function<bool()> restore, bool fullscreen)
+    {
+        const auto handler = playerTransferHandler_;
+        return handler && handler(source, player, std::move(restore), fullscreen);
+    }
 
     QTextCharFormat makeFormat(const QUrl &source, ITEMediaOpener *opener = nullptr,
                                const QSize &size = QSize(320, 220), bool downloadable = false) const;
@@ -40,5 +51,6 @@ private:
     class Private;
     std::unique_ptr<Private> d;
     WindowHandler            windowHandler_;
+    PlayerTransferHandler    playerTransferHandler_;
 };
 #endif
