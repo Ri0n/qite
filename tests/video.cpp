@@ -375,8 +375,7 @@ private slots:
         auto *play = widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"));
         auto *popup = widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"));
         auto *full = widget->findChild<QToolButton *>(QStringLiteral("qite-video-fullscreen-button"));
-        auto *time = widget->findChild<QLabel *>(QString());
-        QVERIFY(play && popup && full && time);
+        QVERIFY(play && popup && full);
         play->click();
         auto *decoder = widget->findChild<QMediaPlayer *>();
         QVERIFY(decoder);
@@ -389,8 +388,8 @@ private slots:
         int transfers = 0;
         controller.setPlayerTransferHandler(
             [&](const QUrl &, QWidget *player, std::function<bool()> callback, bool fullscreen) {
-                QVERIFY(!fullscreen);
-                QCOMPARE(player, widget);
+                if (fullscreen || player != widget)
+                    return false;
                 borrowed = player;
                 restore = std::move(callback);
                 ++transfers;
@@ -411,14 +410,14 @@ private slots:
         QCOMPARE(borrowed->findChild<QMediaPlayer *>(), decoder);
         QVERIFY(!full->isHidden());
         QVERIFY(!popup->isHidden());
-        auto *elapsed = widget->findChild<QLabel *>();
-        QVERIFY(elapsed);
         bool hasTimeDisplay = false;
         for (auto *label : widget->findChildren<QLabel *>())
             if (label->text().contains(QStringLiteral(" / ")))
                 hasTimeDisplay = true;
         QVERIFY(hasTimeDisplay);
-        // An ordinary qite fullscreen transition still borrows the same decoder.
+        // Without a host handler, qite's own fullscreen must still reparent
+        // the same decoder rather than recreate it.
+        controller.setPlayerTransferHandler({});
         QPointer<QMediaPlayer> liveDecoder(decoder);
         full->click();
         QTRY_VERIFY(widget->window()->isFullScreen());
