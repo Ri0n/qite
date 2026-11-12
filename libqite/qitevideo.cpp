@@ -302,6 +302,7 @@ public:
         auto row = new QHBoxLayout(controls);
         row->setContentsMargins(6, 4, 6, 4);
         button = new QToolButton(controls);
+        button->setAutoRaise(true);
         button->setObjectName(QStringLiteral("qite-video-play"));
         button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
         button->setToolTip(ITEVideoController::tr("Play"));
@@ -334,6 +335,7 @@ public:
         row->addWidget(buffering);
         if (format.boolProperty(Downloadable)) {
             downloadButton = new QToolButton(controls);
+            downloadButton->setAutoRaise(true);
             downloadButton->setObjectName(QStringLiteral("qite-video-download"));
             downloadButton->setIcon(
                 QIcon::fromTheme(QStringLiteral("document-save"), style()->standardIcon(QStyle::SP_DialogSaveButton)));
@@ -354,12 +356,14 @@ public:
             updateDownload();
         }
         windowButton = new QToolButton(controls);
+        windowButton->setAutoRaise(true);
         windowButton->setObjectName(QStringLiteral("qite-video-window-button"));
         windowButton->setIcon(
             QIcon::fromTheme(QStringLiteral("window-new"), style()->standardIcon(QStyle::SP_TitleBarNormalButton)));
         updateWindowButton();
         row->addWidget(windowButton);
         fullscreenButton = new QToolButton(controls);
+        fullscreenButton->setAutoRaise(true);
         fullscreenButton->setObjectName(QStringLiteral("qite-video-fullscreen-button"));
         updateFullscreenButton();
         row->addWidget(fullscreenButton);
