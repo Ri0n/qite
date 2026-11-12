@@ -295,6 +295,7 @@ public:
         auto palette = this->palette();
         palette.setColor(QPalette::Window, Qt::black);
         palette.setColor(QPalette::WindowText, Qt::white);
+        palette.setColor(QPalette::ButtonText, Qt::white);
         setPalette(palette);
         layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
