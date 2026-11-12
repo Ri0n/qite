@@ -104,6 +104,7 @@ void ITEMediaSlider::setMediaState(ITEMediaState *state)
 
 void ITEMediaSlider::mousePressEvent(QMouseEvent *event)
 {
+    grooveSeekPressed_ = false;
     if (event->button() == Qt::LeftButton && isEnabled()) {
         QStyleOptionSlider option;
         initStyleOption(&option);
@@ -120,11 +121,25 @@ void ITEMediaSlider::mousePressEvent(QMouseEvent *event)
                                                               : groove.height() - handle.height();
             const int pixel = (orientation() == Qt::Horizontal ? event->pos().x() : event->pos().y()) - start;
             setValue(QStyle::sliderValueFromPosition(minimum(), maximum(), pixel, span, option.upsideDown));
+            grooveSeekPressed_ = true;
             event->accept();
             return;
         }
     }
     QSlider::mousePressEvent(event);
+}
+
+void ITEMediaSlider::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (grooveSeekPressed_ && event->button() == Qt::LeftButton) {
+        // A direct groove click changes the value on press, without entering
+        // QSlider's pressed state. Its base release handler would ignore this
+        // event and Qt could propagate it to the player as a click-to-pause.
+        grooveSeekPressed_ = false;
+        event->accept();
+        return;
+    }
+    QSlider::mouseReleaseEvent(event);
 }
 
 void ITEMediaSlider::paintEvent(QPaintEvent *)
