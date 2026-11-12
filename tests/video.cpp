@@ -85,7 +85,14 @@ public:
         QStyleOptionSlider option;
         initStyleOption(&option);
         option.sliderPosition = value;
+        option.sliderValue    = value;
         return style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this).center();
+    }
+    QRect grooveRect() const
+    {
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        return style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderGroove, this);
     }
 };
 
@@ -329,13 +336,7 @@ private slots:
         // playback. No native groove should paint a second colored prefix.
         state.setCachedRanges({ { 0, .95 } });
         const QImage painted = slider.grab().toImage();
-        QStyleOptionSlider option;
-        option.initFrom(&slider);
-        option.orientation = Qt::Horizontal;
-        option.minimum = slider.minimum();
-        option.maximum = slider.maximum();
-        const QRect groove = slider.style()->subControlRect(QStyle::CC_Slider, &option,
-                                                            QStyle::SC_SliderGroove, &slider);
+        const QRect groove = slider.grooveRect();
         const int origin = slider.positionForValue(0).x();
         const int finish = slider.positionForValue(10000).x();
         const int width = finish - origin;
