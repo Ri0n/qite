@@ -28,6 +28,16 @@
 namespace {
 enum Property { Source = InteractiveTextFormat::UserProperty, Opener, Size, Downloadable };
 
+QString mediaClock(qint64 millis)
+{
+    const qint64 seconds = qMax<qint64>(0, millis) / 1000;
+    if (seconds >= 3600)
+        return QStringLiteral("%1:%2:%3").arg(seconds / 3600).arg(seconds / 60 % 60, 2, 10, QLatin1Char('0'))
+            .arg(seconds % 60, 2, 10, QLatin1Char('0'));
+    return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
+}
+
+
 class VideoControls : public QWidget {
 public:
     explicit VideoControls(QWidget *parent) : QWidget(parent)
@@ -324,7 +334,7 @@ public:
         slider->setEnabled(false);
         slider->setAccessibleName(ITEVideoController::tr("Video position"));
         row->addWidget(slider, 1);
-        time = new QLabel(QStringLiteral("0:00"), controls);
+        time = new QLabel(QStringLiteral("0:00 / –:––"), controls);
         // A QTextEdit stylesheet may override child palettes. Give the time an
         // explicit foreground on our opaque black background as well.
         time->setStyleSheet(QStringLiteral("color: white; background: transparent;"));
@@ -493,8 +503,10 @@ private:
     {
         const bool fullscreen
             = externalFullscreen ? window()->isFullScreen() : (floating && floating->isFullscreenMode());
-        fullscreenButton->setIcon(
-            style()->standardIcon(fullscreen ? QStyle::SP_TitleBarNormalButton : QStyle::SP_TitleBarMaxButton));
+        const auto themeName = fullscreen ? QStringLiteral("view-restore") : QStringLiteral("view-fullscreen");
+        fullscreenButton->setIcon(QIcon::fromTheme(
+            themeName, style()->standardIcon(fullscreen ? QStyle::SP_TitleBarNormalButton
+                                                         : QStyle::SP_TitleBarMaxButton)));
         fullscreenButton->setToolTip(fullscreen ? ITEVideoController::tr("Exit full screen")
                                                 : ITEVideoController::tr("Full screen"));
         fullscreenButton->setAccessibleName(fullscreenButton->toolTip());
@@ -634,7 +646,7 @@ private:
             if (opener && retry)
                 opener->retry(originalSource);
             slider->setEnabled(false);
-            time->setText(QStringLiteral("0:00"));
+            updateTime();
             time->setToolTip({});
         }
         if (!player) {
@@ -677,9 +689,9 @@ private:
                     const QSignalBlocker blocker(slider);
                     slider->setValue(player->duration() > 0 ? int(position * 10000 / player->duration()) : 0);
                 }
-                time->setText(
-                    QStringLiteral("%1:%2").arg(position / 60000).arg(position / 1000 % 60, 2, 10, QLatin1Char('0')));
+                updateTime();
             });
+            connect(player, &QMediaPlayer::durationChanged, this, [this](qint64) { updateTime(); });
             if (opener) {
                 buffering->show();
                 button->setEnabled(false);
@@ -711,6 +723,14 @@ private:
             player->pause();
         else
             player->play();
+    }
+
+    void updateTime()
+    {
+        const qint64 duration = player ? player->duration() : 0;
+        const qint64 position = player ? player->position() : 0;
+        time->setText(mediaClock(position) + QStringLiteral(" / ")
+                      + (duration > 0 ? mediaClock(duration) : QStringLiteral("–:––")));
     }
 
     void updateCoverArt()
