@@ -384,6 +384,8 @@ public:
         layout->addWidget(controls);
         connect(windowButton, &QToolButton::clicked, this, [this] {
             const QPointer<VideoPlayer> guard(this);
+            if (transferToHost(false))
+                return;
             if (downloadController
                 && downloadController->requestWindow(originalSource, player ? player->position() : 0, false)) {
                 if (guard)
@@ -413,6 +415,8 @@ public:
                 return;
             }
             const QPointer<VideoPlayer> guard(this);
+            if (transferToHost(true))
+                return;
             if (downloadController
                 && downloadController->requestWindow(originalSource, player ? player->position() : 0, true)) {
                 if (guard)
@@ -454,7 +458,7 @@ public:
             player->pause();
     }
 
-    bool isFloating() const { return !floating.isNull(); }
+    bool isFloating() const { return !floating.isNull() || hostedExternally_; }
     void setHostFullscreen(std::function<void()> action)
     {
         externalFullscreen = std::move(action);
@@ -485,7 +489,7 @@ protected:
     }
     void hideEvent(QHideEvent *event) override
     {
-        if (!floating && !externalFullscreen && !movingToWindow)
+        if (!floating && !externalFullscreen && !movingToWindow && !hostedExternally_)
             pause();
         QWidget::hideEvent(event);
     }
@@ -499,6 +503,47 @@ protected:
     }
 
 private:
+    bool transferToHost(bool fullscreen)
+    {
+        if (!downloadController || hostedExternally_)
+            return false;
+        // Reparenting can emit hideEvent and the chat's layout can receive
+        // synchronous update signals. Keep the decoder running in both cases.
+        hostedExternally_ = true;
+        movingToWindow = true;
+        const QPointer<VideoPlayer> guard(this);
+        const bool transferred = downloadController->requestPlayerTransfer(
+            originalSource, this, [guard] { return guard && guard->restoreFromHost(); }, fullscreen);
+        if (!guard)
+            return transferred;
+        movingToWindow = false;
+        if (!transferred) {
+            hostedExternally_ = false;
+            return false;
+        }
+        windowButton->hide();
+        fullscreenButton->hide();
+        return true;
+    }
+
+    bool restoreFromHost()
+    {
+        if (!hostedExternally_ || !inlineViewport || !downloadController)
+            return false;
+        movingToWindow = true;
+        hostedExternally_ = false;
+        setParent(inlineViewport);
+        windowButton->show();
+        fullscreenButton->show();
+        updateFullscreenButton();
+        updateWindowButton();
+        show();
+        movingToWindow = false;
+        if (onDocked)
+            onDocked(); // Rebind to the original chat's current viewport row.
+        return true;
+    }
+
     void updateFullscreenButton()
     {
         const bool fullscreen
@@ -773,6 +818,7 @@ private:
     QPointer<ITEVideoController> downloadController;
     std::function<void()>        onDocked;
     bool                         movingToWindow               = false;
+    bool                         hostedExternally_             = false;
     bool                         returnInlineOnFullscreenExit = false;
     QToolButton                 *button;
     ITEMediaSlider              *slider;
