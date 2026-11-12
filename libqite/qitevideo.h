@@ -4,6 +4,8 @@
 
 #include "qite.h"
 #include <memory>
+#include <QIcon>
+#include <QPalette>
 
 // The document contains a fixed-size placeholder only. Playback, frames and
 // controls belong to opaque viewport children, never to the QTextCharFormat.
@@ -15,6 +17,7 @@ public:
     // Reuse the same decoder, frame widget and controls outside a text document.
     static QWidget *createPlayer(const QUrl &, ITEMediaOpener *, QWidget *parent, std::function<void()> fullscreen = {},
                                  qint64 position = 0, bool audioPresentation = false);
+    static QIcon fullscreenIcon(const QPalette &palette, bool inward);
     using WindowHandler = std::function<bool(const QUrl &, qint64, bool)>;
     void setWindowHandler(WindowHandler handler) { windowHandler_ = std::move(handler); }
     bool requestWindow(const QUrl &source, qint64 position, bool fullscreen)
