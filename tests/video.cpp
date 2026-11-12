@@ -363,6 +363,71 @@ private slots:
                      empty.pixelColor(origin + width / 4, groove.top() - 1));
     }
 
+    void inlinePlayerTransfersWithoutRecreatingDecoder()
+    {
+        TextEdit edit;
+        InteractiveText text(&edit);
+        VideoController controller(&text);
+        controller.insert(QUrl::fromLocalFile(QStringLiteral(QITE_TEST_VIDEO)));
+        edit.show();
+        QTRY_VERIFY(edit.findChild<QWidget *>(QStringLiteral("qite-video-player")));
+        auto *widget = edit.findChild<QWidget *>(QStringLiteral("qite-video-player"));
+        auto *play = widget->findChild<QToolButton *>(QStringLiteral("qite-video-play"));
+        auto *popup = widget->findChild<QToolButton *>(QStringLiteral("qite-video-window-button"));
+        auto *full = widget->findChild<QToolButton *>(QStringLiteral("qite-video-fullscreen-button"));
+        auto *time = widget->findChild<QLabel *>(QString());
+        QVERIFY(play && popup && full && time);
+        play->click();
+        auto *decoder = widget->findChild<QMediaPlayer *>();
+        QVERIFY(decoder);
+        QWidget host;
+        host.resize(720, 420);
+        host.show();
+        QCoreApplication::processEvents();
+        std::function<bool()> restore;
+        QPointer<QWidget> borrowed;
+        int transfers = 0;
+        controller.setPlayerTransferHandler(
+            [&](const QUrl &, QWidget *player, std::function<bool()> callback, bool fullscreen) {
+                QVERIFY(!fullscreen);
+                QCOMPARE(player, widget);
+                borrowed = player;
+                restore = std::move(callback);
+                ++transfers;
+                player->setParent(&host);
+                player->show();
+                return true;
+            });
+        popup->click();
+        QCOMPARE(transfers, 1);
+        QVERIFY(borrowed);
+        QCOMPARE(borrowed->parentWidget(), &host);
+        QCOMPARE(borrowed->findChild<QMediaPlayer *>(), decoder);
+        QVERIFY(full->isHidden());
+        QVERIFY(popup->isHidden());
+        QVERIFY(restore);
+        QVERIFY(restore());
+        QTRY_COMPARE(borrowed->parentWidget(), edit.viewport());
+        QCOMPARE(borrowed->findChild<QMediaPlayer *>(), decoder);
+        QVERIFY(!full->isHidden());
+        QVERIFY(!popup->isHidden());
+        auto *elapsed = widget->findChild<QLabel *>();
+        QVERIFY(elapsed);
+        bool hasTimeDisplay = false;
+        for (auto *label : widget->findChildren<QLabel *>())
+            if (label->text().contains(QStringLiteral(" / ")))
+                hasTimeDisplay = true;
+        QVERIFY(hasTimeDisplay);
+        // An ordinary qite fullscreen transition still borrows the same decoder.
+        QPointer<QMediaPlayer> liveDecoder(decoder);
+        full->click();
+        QTRY_VERIFY(widget->window()->isFullScreen());
+        QCOMPARE(widget->findChild<QMediaPlayer *>(), liveDecoder.data());
+        QTest::keyClick(widget->window(), Qt::Key_Escape);
+        QTRY_VERIFY(!widget->window()->isFullScreen());
+        QCOMPARE(widget->findChild<QMediaPlayer *>(), liveDecoder.data());
+    }
+
     void videoSliderClickSeeksToAbsolutePosition()
     {
         TestMediaSlider slider;
