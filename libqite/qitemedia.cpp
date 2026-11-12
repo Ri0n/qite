@@ -81,7 +81,7 @@ void itePaintMediaProgress(QPainter *p, const QRectF &rect, const ITEMediaState 
         // Cached coverage is a map of verified FILE BYTES, not elapsed
         // playback time. Neutral gray makes this distinct from the
         // highlight-colored playback position. A save/download progress
-        // fraction is not evidence of bytes present in the verified cache.
+        // fraction is not evidence that those bytes are cached.
         for (const auto &range : state->cachedRanges())
             fill(range.first, range.second, QColor(155, 158, 165, 220), false);
     }
