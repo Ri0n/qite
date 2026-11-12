@@ -209,7 +209,7 @@ private slots:
         auto *artwork = widget->findChild<QWidget *>(QStringLiteral("qite-audio-artwork"));
         QVERIFY(artwork);
         QVERIFY(widget->findChild<QWidget *>(QStringLiteral("qite-video-controls")));
-        QVERIFY(widget->findChild<QWidget *>(QStringLiteral("qite-video-player")));
+        QCOMPARE(widget->objectName(), QStringLiteral("qite-video-player"));
         host.show();
         widget->show();
         QCoreApplication::processEvents();
