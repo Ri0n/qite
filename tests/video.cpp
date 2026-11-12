@@ -80,6 +80,7 @@ public:
 
 class TestMediaSlider : public ITEMediaSlider {
 public:
+    bool lastReleaseAccepted = false;
     QPoint positionForValue(int value) const
     {
         QStyleOptionSlider option;
@@ -93,6 +94,13 @@ public:
         QStyleOptionSlider option;
         initStyleOption(&option);
         return style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderGroove, this);
+    }
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        ITEMediaSlider::mouseReleaseEvent(event);
+        lastReleaseAccepted = event->isAccepted();
     }
 };
 
@@ -439,6 +447,8 @@ private slots:
         const auto clickAt = [&slider](int percent) {
             // Stay clear of the handle and use the center of the groove.
             QTest::mouseClick(&slider, Qt::LeftButton, Qt::NoModifier, slider.positionForValue(percent * 100));
+            QVERIFY2(slider.lastReleaseAccepted,
+                     "A direct seek must consume mouse release, not propagate click-to-pause to the video player");
             QVERIFY2(qAbs(slider.value() - percent * 100) <= 100,
                      qPrintable(QStringLiteral("clicked %1% but slider value is %2").arg(percent).arg(slider.value())));
         };
