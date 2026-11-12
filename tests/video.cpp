@@ -295,8 +295,65 @@ private slots:
             itePaintMediaProgress(&painter, image.rect(), &state, .25, Qt::white, true);
         }
         QCOMPARE(image.pixelColor(90, 6), QColor(Qt::white));
+        // Download/save progress alone is not proof of cached/verified bytes.
+        state.setCachedRanges({});
+        state.setDownload(true, .9);
+        image.fill(Qt::black);
+        {
+            QPainter painter(&image);
+            itePaintMediaProgress(&painter, image.rect(), &state, 0, Qt::white);
+        }
+        QCOMPARE(image.pixelColor(50, 6), QColor(Qt::black));
         state.setDownload(false, -1, "network error");
         QVERIFY(iteMediaDownloadText(&state).contains("network error"));
+    }
+
+    void mediaSliderPaintsOneAlignedTrackWithDistinctCachedColor()
+    {
+        TestMediaSlider slider;
+        slider.resize(420, 36);
+        slider.setRange(0, 10000);
+        slider.setValue(5000);
+        QPalette palette = slider.palette();
+        palette.setColor(QPalette::Highlight, QColor(20, 190, 240));
+        palette.setColor(QPalette::Mid, QColor(45, 45, 45));
+        slider.setPalette(palette);
+
+        ITEMediaState state;
+        slider.setMediaState(&state);
+        slider.show();
+        QTRY_VERIFY(slider.isVisible());
+        const QImage empty = slider.grab().toImage();
+
+        // A verified contiguous prefix starts at the same logical zero as
+        // playback. No native groove should paint a second colored prefix.
+        state.setCachedRanges({ { 0, .95 } });
+        const QImage painted = slider.grab().toImage();
+        QStyleOptionSlider option;
+        option.initFrom(&slider);
+        option.orientation = Qt::Horizontal;
+        option.minimum = slider.minimum();
+        option.maximum = slider.maximum();
+        const QRect groove = slider.style()->subControlRect(QStyle::CC_Slider, &option,
+                                                            QStyle::SC_SliderGroove, &slider);
+        const int origin = slider.positionForValue(0).x();
+        const int finish = slider.positionForValue(10000).x();
+        const int width = finish - origin;
+        QVERIFY(width > 20);
+        QVERIFY(groove.height() >= 2);
+        const int y = groove.center().y();
+
+        const QColor played = painted.pixelColor(origin + width / 4, y);
+        const QColor cached = painted.pixelColor(origin + width * 3 / 4, y);
+        QVERIFY2(played.green() > cached.green() + 15, "Playback and cache must have distinct colors");
+        QVERIFY(qAbs(cached.red() - cached.blue()) < 25); // Neutral cache, not another blue stripe.
+
+        const int leftOfTrack = origin - 2;
+        if (leftOfTrack >= 0)
+            QCOMPARE(painted.pixelColor(leftOfTrack, y), empty.pixelColor(leftOfTrack, y));
+        if (groove.top() > 0)
+            QCOMPARE(painted.pixelColor(origin + width / 4, groove.top() - 1),
+                     empty.pixelColor(origin + width / 4, groove.top() - 1));
     }
 
     void videoSliderClickSeeksToAbsolutePosition()
