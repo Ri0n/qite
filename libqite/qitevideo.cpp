@@ -15,6 +15,7 @@
 #include <QMediaMetaData>
 #include <QImage>
 #include <QPainter>
+#include <QPixmap>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QSignalBlocker>
@@ -548,10 +549,7 @@ private:
     {
         const bool fullscreen
             = externalFullscreen ? window()->isFullScreen() : (floating && floating->isFullscreenMode());
-        const auto themeName = fullscreen ? QStringLiteral("view-restore") : QStringLiteral("view-fullscreen");
-        fullscreenButton->setIcon(QIcon::fromTheme(
-            themeName, style()->standardIcon(fullscreen ? QStyle::SP_TitleBarNormalButton
-                                                         : QStyle::SP_TitleBarMaxButton)));
+        fullscreenButton->setIcon(ITEVideoController::fullscreenIcon(palette(), fullscreen));
         fullscreenButton->setToolTip(fullscreen ? ITEVideoController::tr("Exit full screen")
                                                 : ITEVideoController::tr("Full screen"));
         fullscreenButton->setAccessibleName(fullscreenButton->toolTip());
@@ -846,6 +844,35 @@ private:
 #endif
     }
 };
+}
+
+QIcon ITEVideoController::fullscreenIcon(const QPalette &palette, bool inward)
+{
+    const QIcon themed = QIcon::fromTheme(inward ? QStringLiteral("view-restore")
+                                               : QStringLiteral("view-fullscreen"));
+    if (!themed.isNull())
+        return themed;
+    QPixmap pixmap(24, 24);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(palette.color(QPalette::ButtonText), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    if (inward) {
+        painter.drawLine(QPointF(4, 4), QPointF(10, 10));
+        painter.drawLine(QPointF(10, 10), QPointF(10, 5));
+        painter.drawLine(QPointF(10, 10), QPointF(5, 10));
+        painter.drawLine(QPointF(20, 20), QPointF(14, 14));
+        painter.drawLine(QPointF(14, 14), QPointF(14, 19));
+        painter.drawLine(QPointF(14, 14), QPointF(19, 14));
+    } else {
+        painter.drawLine(QPointF(10, 10), QPointF(4, 4));
+        painter.drawLine(QPointF(4, 4), QPointF(4, 9));
+        painter.drawLine(QPointF(4, 4), QPointF(9, 4));
+        painter.drawLine(QPointF(14, 14), QPointF(20, 20));
+        painter.drawLine(QPointF(20, 20), QPointF(15, 20));
+        painter.drawLine(QPointF(20, 20), QPointF(20, 15));
+    }
+    return QIcon(pixmap);
 }
 
 QWidget *ITEVideoController::createPlayer(const QUrl &url, ITEMediaOpener *opener, QWidget *parent,
