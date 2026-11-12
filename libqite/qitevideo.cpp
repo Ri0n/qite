@@ -30,7 +30,18 @@ enum Property { Source = InteractiveTextFormat::UserProperty, Opener, Size, Down
 
 class VideoControls : public QWidget {
 public:
-    explicit VideoControls(QWidget *parent) : QWidget(parent) { setAttribute(Qt::WA_OpaquePaintEvent); }
+    explicit VideoControls(QWidget *parent) : QWidget(parent)
+    {
+        setAttribute(Qt::WA_OpaquePaintEvent);
+        // Keep icon buttons visually flat on every platform. Only hover,
+        // press, and keyboard focus get subtle feedback; never a native frame.
+        setStyleSheet(QStringLiteral(
+            "QToolButton { border: 0; padding: 3px; background: transparent; }"
+            "QToolButton:hover:enabled { background: rgba(255,255,255,30); border-radius: 4px; }"
+            "QToolButton:pressed:enabled { background: rgba(255,255,255,55); border-radius: 4px; }"
+            "QToolButton:focus { border: 1px solid rgba(255,255,255,105); padding: 2px;"
+            " border-radius: 4px; }"));
+    }
 
 protected:
     void paintEvent(QPaintEvent *) override
@@ -430,6 +441,10 @@ public:
     {
         externalFullscreen = std::move(action);
         windowButton->hide();
+        // A host such as Psi's MediaViewer already has a fullscreen action
+        // in its own toolbar; keep the bottom button only for standalone
+        // players that control their own window.
+        fullscreenButton->setVisible(!externalFullscreen);
     }
     void startPlayback() { toggle(); }
     void setInitialPosition(qint64 position) { initialPosition = std::max<qint64>(0, position); }
