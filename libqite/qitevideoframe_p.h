@@ -16,12 +16,9 @@ class ITEVideoSurface : public QAbstractVideoSurface {
 public:
     using QAbstractVideoSurface::QAbstractVideoSurface;
     QList<QVideoFrame::PixelFormat> supportedPixelFormats(QAbstractVideoBuffer::HandleType type) const override;
-    bool                            start(const QVideoSurfaceFormat &format) override;
     bool                            present(const QVideoFrame &frame) override;
 signals:
     void frameReady(const QVideoFrame &frame, const QSize &displaySize, bool bottomUp, const QRect &sourceRect);
-private:
-    bool reportedFirstFrame_ = false;
 };
 #endif
 
@@ -61,7 +58,6 @@ private:
     QVideoSink *sink;
 #else
     ITEVideoSurface *surface;
-    bool warnedUnmappableFrame = false;
 #endif
 };
 #endif
