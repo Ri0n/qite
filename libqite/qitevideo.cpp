@@ -939,8 +939,11 @@ private:
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         const auto meta = player->metaData();
         QImage cover = asImage(meta.value(QMediaMetaData::CoverArtImage));
+#if QT_VERSION < QT_VERSION_CHECK(6, 12, 0)
+        // Qt 6.12 deprecates ThumbnailImage and no longer populates it.
         if (cover.isNull())
             cover = asImage(meta.value(QMediaMetaData::ThumbnailImage));
+#endif
 #else
         const QImage cover = asImage(player->metaData(QMediaMetaData::CoverArtImage));
 #endif
