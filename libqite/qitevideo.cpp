@@ -780,16 +780,21 @@ private:
     {
         if (requiresOpener && !opener)
             return;
-        // A live player must always pause in place, even if its backend
-        // reported a video-output error while audio playback continued.
-        // Retrying first destroys QMediaPlayer and restarts the soundtrack.
+        // Transport actions on a running or paused stream must not recreate
+        // its decoder just because the video sink reported a nonfatal error.
+        // Retry is reserved for a stopped/failed player or EndOfMedia.
         if (player) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            if (player->playbackState() == QMediaPlayer::PlayingState) {
+            const auto state = player->playbackState();
 #else
-            if (player->state() == QMediaPlayer::PlayingState) {
+            const auto state = player->state();
 #endif
+            if (state == QMediaPlayer::PlayingState) {
                 player->pause();
+                return;
+            }
+            if (state == QMediaPlayer::PausedState) {
+                player->play();
                 return;
             }
         }
