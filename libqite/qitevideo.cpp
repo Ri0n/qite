@@ -214,12 +214,12 @@ private:
 class VideoWindow : public QWidget {
 public:
     VideoWindow(QWidget *owner, QWidget *frame, QWidget *controls, std::function<void()> close,
-                std::function<void()> exitFullscreen) :
+                std::function<void()> exitFullscreen, bool audioPresentation) :
         QWidget(nullptr, Qt::Window), owner(owner), frame(frame), controls(controls), closeAction(std::move(close)),
         exitFullscreenAction(std::move(exitFullscreen))
     {
         setObjectName(QStringLiteral("qite-video-window"));
-        setWindowTitle(ITEVideoController::tr("Video"));
+        setWindowTitle(audioPresentation ? ITEVideoController::tr("Audio") : ITEVideoController::tr("Video"));
         setAttribute(Qt::WA_OpaquePaintEvent);
         setMouseTracking(true);
         owner->setParent(this);
@@ -693,7 +693,8 @@ private:
         const bool fullscreen = floating && floating->isFullscreenMode();
         windowButton->setToolTip(fullscreen                       ? ITEVideoController::tr("Open in separate window")
                                      : floating && inlineViewport ? ITEVideoController::tr("Return to chat")
-                                     : floating                   ? ITEVideoController::tr("Video window")
+                                     : floating                   ? (artwork ? ITEVideoController::tr("Audio window")
+                                                                            : ITEVideoController::tr("Video window"))
                                                                   : ITEVideoController::tr("Open in separate window"));
         // With no chat anchor a normal detached window is already the only
         // place the player can live; there is nowhere for this button to go.
@@ -712,7 +713,8 @@ private:
             // instead of the cover (or fallback note).
             QWidget *visual = artwork ? static_cast<QWidget *>(artwork) : static_cast<QWidget *>(video);
             auto window
-                = new VideoWindow(this, visual, controls, [this] { closeWindow(); }, [this] { leaveFullscreen(); });
+                = new VideoWindow(this, visual, controls, [this] { closeWindow(); },
+                                  [this] { leaveFullscreen(); }, artwork != nullptr);
             floating = window;
             updateAudioArtworkVisibility();
             window->resize(qMax(480, width()), qMax(320, height()));
