@@ -464,10 +464,10 @@ public:
     void setHostFullscreen(std::function<void()> action)
     {
         externalFullscreen = std::move(action);
-        windowButton->hide();
-        // A host such as Psi's MediaViewer already has a fullscreen action
-        // in its own toolbar; keep the bottom button only for standalone
-        // players that control their own window.
+        // Only a host-owned viewer (e.g. Psi's MediaViewer) replaces these
+        // controls. A standalone player created without a host handler still
+        // needs its own pop-out and fullscreen buttons.
+        windowButton->setVisible(!externalFullscreen);
         fullscreenButton->setVisible(!externalFullscreen);
     }
     void startPlayback() { toggle(); }
