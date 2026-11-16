@@ -58,6 +58,7 @@ private:
     QVideoSink *sink;
 #else
     ITEVideoSurface *surface;
+    bool warnedUnmappableFrame = false;
 #endif
 };
 #endif
