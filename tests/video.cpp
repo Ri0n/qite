@@ -26,6 +26,9 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QVideoFrame>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QVideoFrameFormat>
+#endif
 #include <limits>
 #include <thread>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -215,6 +218,68 @@ private slots:
         delete player;
         QCOMPARE(opener.cancelled, 1);
         QVERIFY(opener.receiver.isNull());
+    }
+
+    void standalonePlayerSupportsFrameClicksAndReadableTransportIcons()
+    {
+        StateOpener opener;
+        QWidget host;
+        auto* widget = ITEVideoController::createPlayer(
+            QUrl(QStringLiteral("test:movie")), &opener, &host);
+        host.resize(640, 400);
+        host.show();
+        widget->show();
+
+        auto* video = widget->findChild<ITEVideoFrameWidget*>();
+        auto* play = widget->findChild<QToolButton*>(
+            QStringLiteral("qite-video-play"));
+        auto* popout = widget->findChild<QToolButton*>(
+            QStringLiteral("qite-video-window-button"));
+        QVERIFY(video && play && popout);
+        QVERIFY(!popout->isHidden());
+
+        // The video frame itself toggles the same playback path as Play.
+        // No working media backend is needed to test event dispatch.
+        QTest::mouseClick(video, Qt::LeftButton);
+        QTRY_VERIFY(widget->findChild<QMediaPlayer*>());
+        auto* media = widget->findChild<QMediaPlayer*>();
+        QTest::mouseClick(video, Qt::LeftButton);
+        QCOMPARE(widget->findChild<QMediaPlayer*>(), media);
+
+        // System icons may be black on white; on qite's black control strip
+        // they must be recolored to a legible, pale foreground.
+        const QImage playIcon = play->icon().pixmap(QSize(24, 24)).toImage();
+        bool hasLightOpaquePixel = false;
+        for (int y = 0; y < playIcon.height() && !hasLightOpaquePixel; ++y) {
+            for (int x = 0; x < playIcon.width(); ++x) {
+                const QColor pixel = playIcon.pixelColor(x, y);
+                if (pixel.alpha() > 128 && pixel.red() >= 160
+                    && pixel.green() >= 160 && pixel.blue() >= 160) {
+                    hasLightOpaquePixel = true;
+                    break;
+                }
+            }
+        }
+        QVERIFY(hasLightOpaquePixel);
+    }
+
+    void videoFrameReportsIntrinsicSize()
+    {
+        ITEVideoFrameWidget frame;
+        QSignalSpy changed(&frame, &ITEVideoFrameWidget::videoSizeChanged);
+        QVERIFY(!frame.videoSize().isValid());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QVideoFrameFormat format(QSize(320, 180), QVideoFrameFormat::Format_BGRA8888);
+        frame.videoSink()->setVideoFrame(QVideoFrame(format));
+#else
+        QVideoSurfaceFormat format(QSize(320, 180), QVideoFrame::Format_RGB32);
+        QVERIFY(frame.videoSurface()->start(format));
+        QVideoFrame decoded(320 * 180 * 4, QSize(320, 180), 320 * 4,
+                            QVideoFrame::Format_RGB32);
+        QVERIFY(frame.videoSurface()->present(decoded));
+#endif
+        QTRY_COMPARE(changed.size(), 1);
+        QCOMPARE(frame.videoSize(), QSize(320, 180));
     }
 
     void audioPresentationHasFallbackArtWithoutDownloading()
