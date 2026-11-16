@@ -13,7 +13,9 @@
 #include <QLabel>
 #include <QMediaPlayer>
 #include <QMediaMetaData>
+#include <QMouseEvent>
 #include <QImage>
+#include <QIconEngine>
 #include <QPainter>
 #include <QPixmap>
 #include <QScrollBar>
@@ -25,6 +27,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <functional>
+#include <utility>
 
 namespace {
 enum Property { Source = InteractiveTextFormat::UserProperty, Opener, Size, Downloadable };
@@ -38,6 +41,100 @@ QString mediaClock(qint64 millis)
     return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
 }
 
+
+// Qite always paints the transport controls on black. Preserve each style
+// icon's native resolution and mode/state while using a legible foreground.
+// Recolor at the requested device scale, rather than capturing a 24px bitmap.
+class VideoControlIconEngine final : public QIconEngine {
+public:
+    explicit VideoControlIconEngine(QIcon source) : source_(std::move(source)) {}
+
+    QIconEngine *clone() const override { return new VideoControlIconEngine(source_); }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    bool isNull() override { return source_.isNull(); }
+#endif
+
+    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override
+    {
+        if (!painter || rect.isEmpty())
+            return;
+        const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        const QPixmap rendered = renderPixmap(rect.size(), mode, state, dpr);
+        if (!rendered.isNull())
+            painter->drawPixmap(rect, rendered);
+    }
+
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override
+    {
+        return renderPixmap(size, mode, state, 1.0);
+    }
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal dpr) override
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+        // Before Qt 6.8, Qt incorrectly supplied physical pixels as size.
+        const QSize logical(qMax(1, qRound(size.width() / qMax<qreal>(1.0, dpr))),
+                            qMax(1, qRound(size.height() / qMax<qreal>(1.0, dpr))));
+        return renderPixmap(logical, mode, state, dpr);
+#else
+        return renderPixmap(size, mode, state, dpr);
+#endif
+    }
+#else
+    // In Qt 5 isNull() and scaledPixmap() are nonvirtual wrappers around
+    // virtual_hook(); overriding those methods has no effect (and does not
+    // compile when marked override).
+    void virtual_hook(int id, void *data) override
+    {
+        if (id == QIconEngine::IsNullHook) {
+            if (data)
+                *static_cast<bool *>(data) = source_.isNull();
+            return;
+        }
+        if (id == QIconEngine::ScaledPixmapHook) {
+            if (data) {
+                auto *args = static_cast<QIconEngine::ScaledPixmapArgument *>(data);
+                args->pixmap = renderPixmap(args->size, args->mode, args->state, args->scale);
+            }
+            return;
+        }
+        QIconEngine::virtual_hook(id, data);
+    }
+#endif
+
+private:
+    QPixmap renderPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal dpr) const
+    {
+        if (size.isEmpty())
+            return {};
+        dpr = qMax<qreal>(1.0, dpr);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QPixmap image = source_.pixmap(size, dpr, mode, state);
+#else
+        // Qt 5 has no QIcon::pixmap(QSize, qreal, Mode, State) overload.
+        // Request the physical pixels, retaining the logical icon dimensions.
+        const QSize pixels(qMax(1, qRound(size.width() * dpr)),
+                           qMax(1, qRound(size.height() * dpr)));
+        QPixmap image = source_.pixmap(pixels, mode, state);
+        if (!image.isNull())
+            image.setDevicePixelRatio(dpr);
+#endif
+        if (image.isNull())
+            return image;
+        QPainter tint(&image);
+        tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        tint.fillRect(QRect(QPoint(0, 0), image.size()), QColor(235, 240, 248));
+        return image;
+    }
+
+    QIcon source_;
+};
+
+QIcon videoControlIcon(const QIcon &original)
+{
+    return original.isNull() ? original : QIcon(new VideoControlIconEngine(original));
+}
 
 class VideoControls : public QWidget {
 public:
@@ -301,6 +398,7 @@ public:
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
         video = new ITEVideoFrameWidget(this);
+        video->setCursor(Qt::PointingHandCursor);
         video->installEventFilter(this);
         layout->addWidget(video, 1);
         if (audioPresentation) {
@@ -317,7 +415,7 @@ public:
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::TabFocus);
         button->setObjectName(QStringLiteral("qite-video-play"));
-        button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+        button->setIcon(videoControlIcon(style()->standardIcon(QStyle::SP_MediaPlay)));
         button->setToolTip(ITEVideoController::tr("Play"));
         button->setAccessibleName(button->toolTip());
         row->addWidget(button);
@@ -373,8 +471,8 @@ public:
         windowButton->setAutoRaise(true);
         windowButton->setFocusPolicy(Qt::TabFocus);
         windowButton->setObjectName(QStringLiteral("qite-video-window-button"));
-        windowButton->setIcon(
-            QIcon::fromTheme(QStringLiteral("window-new"), style()->standardIcon(QStyle::SP_TitleBarNormalButton)));
+        windowButton->setIcon(videoControlIcon(
+            QIcon::fromTheme(QStringLiteral("window-new"), style()->standardIcon(QStyle::SP_TitleBarNormalButton))));
         updateWindowButton();
         row->addWidget(windowButton);
         fullscreenButton = new QToolButton(controls);
@@ -464,10 +562,10 @@ public:
     void setHostFullscreen(std::function<void()> action)
     {
         externalFullscreen = std::move(action);
-        windowButton->hide();
-        // A host such as Psi's MediaViewer already has a fullscreen action
-        // in its own toolbar; keep the bottom button only for standalone
-        // players that control their own window.
+        // Only a host-owned viewer (e.g. Psi's MediaViewer) replaces these
+        // controls. A standalone player created without a host handler still
+        // needs its own pop-out and fullscreen buttons.
+        windowButton->setVisible(!externalFullscreen);
         fullscreenButton->setVisible(!externalFullscreen);
     }
     void startPlayback() { toggle(); }
@@ -499,6 +597,11 @@ protected:
     {
         if (object == video && event->type() == QEvent::MouseButtonDblClick) {
             fullscreenButton->click();
+            return true;
+        }
+        if (object == video && event->type() == QEvent::MouseButtonRelease
+            && static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
+            toggle(); // Click the frame to pause/resume without touching its controls.
             return true;
         }
         return false;
@@ -550,7 +653,7 @@ private:
     {
         const bool fullscreen
             = externalFullscreen ? window()->isFullScreen() : (floating && floating->isFullscreenMode());
-        fullscreenButton->setIcon(ITEVideoController::fullscreenIcon(palette(), fullscreen));
+        fullscreenButton->setIcon(videoControlIcon(ITEVideoController::fullscreenIcon(palette(), fullscreen)));
         fullscreenButton->setToolTip(fullscreen ? ITEVideoController::tr("Exit full screen")
                                                 : ITEVideoController::tr("Full screen"));
         fullscreenButton->setAccessibleName(fullscreenButton->toolTip());
@@ -652,7 +755,7 @@ private:
 
     void updateState(bool playing)
     {
-        button->setIcon(style()->standardIcon(playing ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay));
+        button->setIcon(videoControlIcon(style()->standardIcon(playing ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay)));
         button->setToolTip(playing ? ITEVideoController::tr("Pause") : ITEVideoController::tr("Play"));
         button->setAccessibleName(button->toolTip());
     }
