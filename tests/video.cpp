@@ -364,6 +364,7 @@ private slots:
 
         popout->click();
         QTRY_VERIFY(player->parentWidget() != &host);
+        QCOMPARE(player->window()->windowTitle(), ITEVideoController::tr("Audio"));
         QTRY_VERIFY(art->isVisible());
         QVERIFY(player->property("qite-audio-artwork-visible").toBool());
         auto* fullscreen = player->findChild<QToolButton*>(
@@ -882,6 +883,7 @@ private slots:
         QCOMPARE(popup->objectName(), QStringLiteral("qite-video-window"));
         QVERIFY(popup->isVisible());
         QVERIFY(!popup->isFullScreen());
+        QCOMPARE(popup->windowTitle(), ITEVideoController::tr("Video"));
         QCOMPARE(popup->findChild<QMediaPlayer *>(), media.data());
         QTRY_COMPARE(opener.opens, 1);
 
