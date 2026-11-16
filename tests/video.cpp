@@ -725,6 +725,36 @@ private slots:
 #endif
     }
 
+    void surfaceConvertsNV12()
+    {
+#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
+        QSKIP("Qt 5.15's QVideoFrame::image() is required for NV12 conversion");
+#else
+        ITEVideoFrameWidget output;
+        output.resize(80, 80);
+        auto* surface = output.videoSurface();
+        QVERIFY(surface->start(QVideoSurfaceFormat(QSize(4, 4), QVideoFrame::Format_NV12)));
+        // 4x4 NV12: sixteen Y bytes followed by eight interleaved UV bytes.
+        // BT.601 (Y=81, U=90, V=240) converts to an approximately red pixel.
+        QVideoFrame frame(4 * 4 * 3 / 2, QSize(4, 4), 4, QVideoFrame::Format_NV12);
+        QVERIFY(frame.map(QAbstractVideoBuffer::WriteOnly));
+        QCOMPARE(frame.planeCount(), 2);
+        for (int i = 0; i < 16; ++i)
+            frame.bits(0)[i] = 81;
+        for (int i = 0; i < 8; i += 2) {
+            frame.bits(1)[i] = 90;
+            frame.bits(1)[i + 1] = 240;
+        }
+        frame.unmap();
+        QVERIFY(surface->present(frame));
+        output.show();
+        QTRY_VERIFY_WITH_TIMEOUT([](const QColor &color) {
+            return color.red() > 160 && color.green() < 100 && color.blue() < 100;
+        }(output.grab().toImage().pixelColor(40, 40)), 2000);
+        QCOMPARE(output.videoSize(), QSize(4, 4));
+#endif
+    }
+
     void surfaceViewport()
     {
         ITEVideoFrameWidget output;
