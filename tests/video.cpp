@@ -340,6 +340,41 @@ private slots:
         delete widget;
     }
 
+    void compactAudioShowsFallbackOnlyWhenDetached()
+    {
+        class DeferredOpener : public StateOpener {
+        public:
+            CancelOpen openAsync(QUrl, QObject *, OpenDone) override { return {}; }
+        } opener;
+        QWidget host;
+        host.resize(480, 220);
+        auto* player = ITEVideoController::createPlayer(
+            QUrl(QStringLiteral("test:audio")), &opener, &host, {}, 0, true, true);
+        QVERIFY(player);
+        auto* art = player->findChild<QWidget*>(QStringLiteral("qite-audio-artwork"));
+        auto* controls = player->findChild<QWidget*>(QStringLiteral("qite-video-controls"));
+        auto* popout = player->findChild<QToolButton*>(QStringLiteral("qite-video-window-button"));
+        QVERIFY(art && controls && popout);
+        host.show();
+        player->show();
+        QCoreApplication::processEvents();
+        QVERIFY(art->isHidden());
+        QVERIFY(!player->property("qite-audio-artwork-visible").toBool());
+        QVERIFY(controls->isVisible());
+
+        popout->click();
+        QTRY_VERIFY(player->parentWidget() != &host);
+        QTRY_VERIFY(art->isVisible());
+        QVERIFY(player->property("qite-audio-artwork-visible").toBool());
+        // Returning to the message hides only fallback art, not the toolbar.
+        popout->click();
+        QTRY_COMPARE(player->parentWidget(), &host);
+        QVERIFY(art->isHidden());
+        QVERIFY(!player->property("qite-audio-artwork-visible").toBool());
+        QVERIFY(controls->isVisible());
+        delete player;
+    }
+
     void failedPreparationCanBeRetried()
     {
         class FailingOpener : public StateOpener {
