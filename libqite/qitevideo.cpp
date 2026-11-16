@@ -707,8 +707,12 @@ private:
             movingToWindow = true;
             // The window becomes the QObject parent of the complete player.
             // Reparenting does not recreate QMediaPlayer or reopen the stream.
+            // For audio, artwork is the actual visual content. Moving the
+            // hidden video frame into fullscreen would produce a black screen
+            // instead of the cover (or fallback note).
+            QWidget *visual = artwork ? static_cast<QWidget *>(artwork) : static_cast<QWidget *>(video);
             auto window
-                = new VideoWindow(this, video, controls, [this] { closeWindow(); }, [this] { leaveFullscreen(); });
+                = new VideoWindow(this, visual, controls, [this] { closeWindow(); }, [this] { leaveFullscreen(); });
             floating = window;
             updateAudioArtworkVisibility();
             window->resize(qMax(480, width()), qMax(320, height()));
