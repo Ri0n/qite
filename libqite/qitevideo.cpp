@@ -780,6 +780,19 @@ private:
     {
         if (requiresOpener && !opener)
             return;
+        // A live player must always pause in place, even if its backend
+        // reported a video-output error while audio playback continued.
+        // Retrying first destroys QMediaPlayer and restarts the soundtrack.
+        if (player) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            if (player->playbackState() == QMediaPlayer::PlayingState) {
+#else
+            if (player->state() == QMediaPlayer::PlayingState) {
+#endif
+                player->pause();
+                return;
+            }
+        }
         const bool retry = player
             && (inputFailed || player->error() != QMediaPlayer::NoError
                 || (mediaState && !mediaState->sourceError().isEmpty()));
@@ -861,15 +874,7 @@ private:
             }
             attachInput(nullptr, source);
         }
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        const bool playing = player->playbackState() == QMediaPlayer::PlayingState;
-#else
-        const bool playing = player->state() == QMediaPlayer::PlayingState;
-#endif
-        if (playing)
-            player->pause();
-        else
-            player->play();
+        player->play();
     }
 
     void updateTime()
