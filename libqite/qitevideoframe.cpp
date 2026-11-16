@@ -2,6 +2,7 @@
 #include "qitevideoframe_p.h"
 
 #include <QMediaPlayer>
+#include <QLoggingCategory>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QPainter>
@@ -9,6 +10,8 @@
 #include <QVideoSink>
 #else
 #include <QVideoSurfaceFormat>
+
+Q_LOGGING_CATEGORY(qiteVideoSurfaceLog, "qite.video.surface")
 
 QList<QVideoFrame::PixelFormat> ITEVideoSurface::supportedPixelFormats(QAbstractVideoBuffer::HandleType type) const
 {
@@ -33,8 +36,24 @@ QList<QVideoFrame::PixelFormat> ITEVideoSurface::supportedPixelFormats(QAbstract
     return formats;
 }
 
+bool ITEVideoSurface::start(const QVideoSurfaceFormat &format)
+{
+    const bool success = QAbstractVideoSurface::start(format);
+    reportedFirstFrame_ = false;
+    qCDebug(qiteVideoSurfaceLog) << "Qt5 surface start:" << (success ? "accepted" : "rejected")
+                                << "format" << format.pixelFormat()
+                                << "size" << format.frameSize()
+                                << "handle" << format.handleType();
+    return success;
+}
+
 bool ITEVideoSurface::present(const QVideoFrame &frame)
 {
+    if (!reportedFirstFrame_ && frame.isValid()) {
+        reportedFirstFrame_ = true;
+        qCDebug(qiteVideoSurfaceLog) << "Qt5 first video frame:" << frame.pixelFormat()
+                                    << frame.size() << "handle" << frame.handleType();
+    }
     emit frameReady(frame, surfaceFormat().sizeHint(),
                     surfaceFormat().scanLineDirection() == QVideoSurfaceFormat::BottomToTop,
                     surfaceFormat().viewport());
