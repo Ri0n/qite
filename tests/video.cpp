@@ -249,21 +249,36 @@ private slots:
         QVERIFY(widget->findChild<QToolButton*>(
             QStringLiteral("qite-video-play")));
 
-        // System icons may be black on white; on qite's black control strip
-        // they must be recolored to a legible, pale foreground.
-        const QImage playIcon = play->icon().pixmap(QSize(24, 24)).toImage();
-        bool hasLightOpaquePixel = false;
-        for (int y = 0; y < playIcon.height() && !hasLightOpaquePixel; ++y) {
-            for (int x = 0; x < playIcon.width(); ++x) {
-                const QColor pixel = playIcon.pixelColor(x, y);
-                if (pixel.alpha() > 128 && pixel.red() >= 160
-                    && pixel.green() >= 160 && pixel.blue() >= 160) {
-                    hasLightOpaquePixel = true;
-                    break;
+        // Icons are always legible on the black strip, irrespective of the
+        // system icon theme. Rendering at 2x must use the physical device
+        // resolution, and Disabled must retain the source icon's alpha mask.
+        const auto renderIcon = [play](qreal dpr, QIcon::Mode mode) {
+            const QSize logical(24, 24);
+            QPixmap canvas(qRound(logical.width() * dpr), qRound(logical.height() * dpr));
+            canvas.setDevicePixelRatio(dpr);
+            canvas.fill(Qt::transparent);
+            QPainter painter(&canvas);
+            play->icon().paint(&painter, QRect(QPoint(0, 0), logical), Qt::AlignCenter, mode);
+            return canvas.toImage();
+        };
+        const auto hasLightPixel = [](const QImage &image) {
+            for (int y = 0; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    const QColor pixel = image.pixelColor(x, y);
+                    if (pixel.alpha() > 32 && pixel.red() >= 160
+                        && pixel.green() >= 160 && pixel.blue() >= 160)
+                        return true;
                 }
             }
-        }
-        QVERIFY(hasLightOpaquePixel);
+            return false;
+        };
+        const QImage standard = renderIcon(1.0, QIcon::Normal);
+        const QImage retina = renderIcon(2.0, QIcon::Normal);
+        const QImage disabled = renderIcon(2.0, QIcon::Disabled);
+        QCOMPARE(retina.size(), standard.size() * 2);
+        QVERIFY(hasLightPixel(standard));
+        QVERIFY(hasLightPixel(retina));
+        QVERIFY(hasLightPixel(disabled));
     }
 
     void videoFrameReportsIntrinsicSize()
