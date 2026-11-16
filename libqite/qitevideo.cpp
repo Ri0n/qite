@@ -15,6 +15,7 @@
 #include <QMediaMetaData>
 #include <QMouseEvent>
 #include <QImage>
+#include <QIconEngine>
 #include <QPainter>
 #include <QPixmap>
 #include <QScrollBar>
@@ -40,18 +41,62 @@ QString mediaClock(qint64 millis)
 }
 
 
-// Standard/style icons can be dark on a light desktop palette, while these
-// controls deliberately have a black video-toolbar background. Rasterize
-// their alpha silhouettes to a fixed light foreground for reliable contrast.
+// Qite always paints the transport controls on black. Preserve each style
+// icon's native resolution and mode/state while using a legible foreground.
+// Recolor at the requested device scale, rather than capturing a 24px bitmap.
+class VideoControlIconEngine final : public QIconEngine {
+public:
+    explicit VideoControlIconEngine(QIcon source) : source_(std::move(source)) {}
+
+    QIconEngine *clone() const override { return new VideoControlIconEngine(source_); }
+    bool isNull() override { return source_.isNull(); }
+
+    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override
+    {
+        if (!painter || rect.isEmpty())
+            return;
+        const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        const QPixmap rendered = scaledPixmap(rect.size(), mode, state, dpr);
+        if (!rendered.isNull())
+            painter->drawPixmap(rect, rendered);
+    }
+
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override
+    {
+        return scaledPixmap(size, mode, state, 1.0);
+    }
+
+    QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal dpr) override
+    {
+        if (size.isEmpty())
+            return {};
+        dpr = qMax<qreal>(1.0, dpr);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QPixmap image = source_.pixmap(size, dpr, mode, state);
+#else
+        // Qt 5 has no QIcon::pixmap(QSize, qreal, Mode, State) overload.
+        // Request the physical pixels, retaining the logical icon dimensions.
+        const QSize pixels(qMax(1, qRound(size.width() * dpr)),
+                           qMax(1, qRound(size.height() * dpr)));
+        QPixmap image = source_.pixmap(pixels, mode, state);
+        if (!image.isNull())
+            image.setDevicePixelRatio(dpr);
+#endif
+        if (image.isNull())
+            return image;
+        QPainter tint(&image);
+        tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        tint.fillRect(QRect(QPoint(0, 0), image.size()), QColor(235, 240, 248));
+        return image;
+    }
+
+private:
+    QIcon source_;
+};
+
 QIcon videoControlIcon(const QIcon &original)
 {
-    QPixmap pixmap = original.pixmap(QSize(24, 24));
-    if (pixmap.isNull())
-        return original;
-    QPainter painter(&pixmap);
-    painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    painter.fillRect(pixmap.rect(), QColor(235, 240, 248));
-    return QIcon(pixmap);
+    return original.isNull() ? original : QIcon(new VideoControlIconEngine(original));
 }
 
 class VideoControls : public QWidget {
