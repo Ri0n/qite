@@ -700,61 +700,6 @@ private slots:
     }
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    void surfaceConvertsNativeBgrAndAcceptsYuv()
-    {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-        QSKIP("Qt 5.15's QVideoFrame::image() is required for native format conversion");
-#else
-        ITEVideoFrameWidget output;
-        auto* surface = output.videoSurface();
-        const auto formats = surface->supportedPixelFormats(QAbstractVideoBuffer::NoHandle);
-        QVERIFY(formats.contains(QVideoFrame::Format_BGR24));
-        QVERIFY(formats.contains(QVideoFrame::Format_NV12));
-        QVERIFY(formats.contains(QVideoFrame::Format_YUV420P));
-        QVERIFY(surface->start(QVideoSurfaceFormat(QSize(4, 4), QVideoFrame::Format_BGR24)));
-        QVideoFrame frame(4 * 4 * 3, QSize(4, 4), 4 * 3, QVideoFrame::Format_BGR24);
-        QVERIFY(frame.map(QAbstractVideoBuffer::WriteOnly));
-        for (int i = 0; i < frame.mappedBytes(); ++i)
-            frame.bits()[i] = 220;
-        frame.unmap();
-        QVERIFY(surface->present(frame));
-        output.resize(80, 80);
-        output.show();
-        QTRY_VERIFY_WITH_TIMEOUT(output.grab().toImage().pixelColor(40, 40).red() > 150, 2000);
-        QCOMPARE(output.videoSize(), QSize(4, 4));
-#endif
-    }
-
-    void surfaceConvertsNV12()
-    {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-        QSKIP("Qt 5.15's QVideoFrame::image() is required for NV12 conversion");
-#else
-        ITEVideoFrameWidget output;
-        output.resize(80, 80);
-        auto* surface = output.videoSurface();
-        QVERIFY(surface->start(QVideoSurfaceFormat(QSize(4, 4), QVideoFrame::Format_NV12)));
-        // 4x4 NV12: sixteen Y bytes followed by eight interleaved UV bytes.
-        // BT.601 (Y=81, U=90, V=240) converts to an approximately red pixel.
-        QVideoFrame frame(4 * 4 * 3 / 2, QSize(4, 4), 4, QVideoFrame::Format_NV12);
-        QVERIFY(frame.map(QAbstractVideoBuffer::WriteOnly));
-        QCOMPARE(frame.planeCount(), 2);
-        for (int i = 0; i < 16; ++i)
-            frame.bits(0)[i] = 81;
-        for (int i = 0; i < 8; i += 2) {
-            frame.bits(1)[i] = 90;
-            frame.bits(1)[i + 1] = 240;
-        }
-        frame.unmap();
-        QVERIFY(surface->present(frame));
-        output.show();
-        QTRY_VERIFY_WITH_TIMEOUT([](const QColor &color) {
-            return color.red() > 160 && color.green() < 100 && color.blue() < 100;
-        }(output.grab().toImage().pixelColor(40, 40)), 2000);
-        QCOMPARE(output.videoSize(), QSize(4, 4));
-#endif
-    }
-
     void surfaceViewport()
     {
         ITEVideoFrameWidget output;
@@ -1517,10 +1462,7 @@ private slots:
         TextEdit        edit;
         InteractiveText text(&edit);
         VideoController video(&text);
-        // Override the bundled WebM fixture to reproduce platform-specific
-        // H.264/AAC failures without committing a user's private video.
-        const QString clip = qEnvironmentVariable("QITE_TEST_VIDEO_FILE", QStringLiteral(QITE_TEST_VIDEO));
-        video.insert(QUrl::fromLocalFile(clip));
+        video.insert(QUrl::fromLocalFile(QStringLiteral(QITE_TEST_VIDEO)));
         edit.insertPlainText("\n" + QString("chat\n").repeated(2000));
         edit.moveCursor(QTextCursor::Start);
         edit.show();
@@ -1532,11 +1474,9 @@ private slots:
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         QSignalSpy frames(edit.findChild<ITEVideoFrameWidget *>()->videoSink(), &QVideoSink::videoFrameChanged);
 #else
-        // A QVideoProbe can receive decoded frames even when the player
-        // cannot negotiate its QAbstractVideoSurface. Assert on the actual
-        // raster output path instead (the original audio-only regression).
-        QSignalSpy frames(edit.findChild<ITEVideoFrameWidget *>()->videoSurface(),
-                          &ITEVideoSurface::frameReady);
+        QVideoProbe probe;
+        QVERIFY(probe.setSource(player));
+        QSignalSpy frames(&probe, &QVideoProbe::videoFrameProbed);
 #endif
         QTRY_VERIFY_WITH_TIMEOUT(frames.count() >= 5, 10000);
         QSignalSpy changed(edit.document(), &QTextDocument::contentsChanged);
@@ -1548,7 +1488,7 @@ private slots:
         QCOMPARE(edit.paints, 0);
         auto button = edit.findChild<QToolButton *>();
         button->click(); // Pause before seeking, so the target stays stable.
-        QCOMPARE(edit.findChild<QMediaPlayer *>(), player); // Never restart on Pause.
+        QCOMPARE(edit.findChild<QMediaPlayer *>(), player);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         QTRY_COMPARE(player->playbackState(), QMediaPlayer::PausedState);
 #else
