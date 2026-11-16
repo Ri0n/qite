@@ -234,6 +234,12 @@ private slots:
         host.show();
         widget->show();
         QCoreApplication::processEvents();
+        // createPlayer() without a host fullscreen handler must retain both
+        // embedded player controls. The host-enabled case above hides them.
+        auto* popout = widget->findChild<QToolButton*>(QStringLiteral("qite-video-window-button"));
+        auto* fullscreen = widget->findChild<QToolButton*>(QStringLiteral("qite-video-fullscreen-button"));
+        QVERIFY(popout && !popout->isHidden());
+        QVERIFY(fullscreen && !fullscreen->isHidden());
         QVERIFY(artwork->isVisible());
         QPixmap fallback(96, 96);
         fallback.fill(Qt::transparent);
