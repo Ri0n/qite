@@ -1487,7 +1487,10 @@ private slots:
         TextEdit        edit;
         InteractiveText text(&edit);
         VideoController video(&text);
-        video.insert(QUrl::fromLocalFile(QStringLiteral(QITE_TEST_VIDEO)));
+        // Override the bundled WebM fixture to reproduce platform-specific
+        // H.264/AAC failures without committing a user's private video.
+        const QString clip = qEnvironmentVariable("QITE_TEST_VIDEO_FILE", QITE_TEST_VIDEO);
+        video.insert(QUrl::fromLocalFile(clip));
         edit.insertPlainText("\n" + QString("chat\n").repeated(2000));
         edit.moveCursor(QTextCursor::Start);
         edit.show();
