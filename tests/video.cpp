@@ -340,6 +340,52 @@ private slots:
         delete widget;
     }
 
+    void compactAudioShowsFallbackOnlyWhenDetached()
+    {
+        class DeferredOpener : public StateOpener {
+        public:
+            CancelOpen openAsync(QUrl, QObject *, OpenDone) override { return {}; }
+        } opener;
+        QWidget host;
+        host.resize(480, 220);
+        auto* player = ITEVideoController::createPlayer(
+            QUrl(QStringLiteral("test:audio")), &opener, &host, {}, 0, true, true);
+        QVERIFY(player);
+        auto* art = player->findChild<QWidget*>(QStringLiteral("qite-audio-artwork"));
+        auto* controls = player->findChild<QWidget*>(QStringLiteral("qite-video-controls"));
+        auto* popout = player->findChild<QToolButton*>(QStringLiteral("qite-video-window-button"));
+        QVERIFY(art && controls && popout);
+        host.show();
+        player->show();
+        QCoreApplication::processEvents();
+        QVERIFY(art->isHidden());
+        QVERIFY(!player->property("qite-audio-artwork-visible").toBool());
+        QVERIFY(controls->isVisible());
+
+        popout->click();
+        QTRY_VERIFY(player->parentWidget() != &host);
+        QCOMPARE(player->window()->windowTitle(), ITEVideoController::tr("Audio"));
+        QTRY_VERIFY(art->isVisible());
+        QVERIFY(player->property("qite-audio-artwork-visible").toBool());
+        auto* fullscreen = player->findChild<QToolButton*>(
+            QStringLiteral("qite-video-fullscreen-button"));
+        QVERIFY(fullscreen);
+        fullscreen->click();
+        QTRY_VERIFY(player->window()->isFullScreen());
+        QCOMPARE(art->parentWidget(), player->window()); // Not the hidden video frame.
+        QVERIFY(art->isVisible());
+        fullscreen->click();
+        QTRY_VERIFY(!player->window()->isFullScreen());
+        QCOMPARE(art->parentWidget(), player);
+        // Returning to the message hides only fallback art, not the toolbar.
+        popout->click();
+        QTRY_COMPARE(player->parentWidget(), &host);
+        QVERIFY(art->isHidden());
+        QVERIFY(!player->property("qite-audio-artwork-visible").toBool());
+        QVERIFY(controls->isVisible());
+        delete player;
+    }
+
     void failedPreparationCanBeRetried()
     {
         class FailingOpener : public StateOpener {
@@ -837,6 +883,7 @@ private slots:
         QCOMPARE(popup->objectName(), QStringLiteral("qite-video-window"));
         QVERIFY(popup->isVisible());
         QVERIFY(!popup->isFullScreen());
+        QCOMPARE(popup->windowTitle(), ITEVideoController::tr("Video"));
         QCOMPARE(popup->findChild<QMediaPlayer *>(), media.data());
         QTRY_COMPARE(opener.opens, 1);
 
