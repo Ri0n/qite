@@ -899,6 +899,13 @@ private:
 
     void showError(const QString &message)
     {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        // A failed video sink can coexist with audible playback. Capture the
+        // decoder status for field reports instead of silently restarting it.
+        qWarning().noquote() << "Qite Qt5 playback error:" << message
+                             << "state:" << (player ? int(player->state()) : -1)
+                             << "mediaStatus:" << (player ? int(player->mediaStatus()) : -1);
+#endif
         inputFailed = true;
         buffering->hide();
         const auto detail = mediaState && !mediaState->sourceError().isEmpty() ? mediaState->sourceError() : message;
