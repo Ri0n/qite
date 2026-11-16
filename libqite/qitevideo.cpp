@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QMediaPlayer>
 #include <QMediaMetaData>
+#include <QMouseEvent>
 #include <QImage>
 #include <QPainter>
 #include <QPixmap>
@@ -38,6 +39,20 @@ QString mediaClock(qint64 millis)
     return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
 }
 
+
+// Standard/style icons can be dark on a light desktop palette, while these
+// controls deliberately have a black video-toolbar background. Rasterize
+// their alpha silhouettes to a fixed light foreground for reliable contrast.
+QIcon videoControlIcon(const QIcon &original)
+{
+    QPixmap pixmap = original.pixmap(QSize(24, 24));
+    if (pixmap.isNull())
+        return original;
+    QPainter painter(&pixmap);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    painter.fillRect(pixmap.rect(), QColor(235, 240, 248));
+    return QIcon(pixmap);
+}
 
 class VideoControls : public QWidget {
 public:
@@ -301,6 +316,7 @@ public:
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
         video = new ITEVideoFrameWidget(this);
+        video->setCursor(Qt::PointingHandCursor);
         video->installEventFilter(this);
         layout->addWidget(video, 1);
         if (audioPresentation) {
@@ -317,7 +333,7 @@ public:
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::TabFocus);
         button->setObjectName(QStringLiteral("qite-video-play"));
-        button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+        button->setIcon(videoControlIcon(style()->standardIcon(QStyle::SP_MediaPlay)));
         button->setToolTip(ITEVideoController::tr("Play"));
         button->setAccessibleName(button->toolTip());
         row->addWidget(button);
@@ -373,8 +389,8 @@ public:
         windowButton->setAutoRaise(true);
         windowButton->setFocusPolicy(Qt::TabFocus);
         windowButton->setObjectName(QStringLiteral("qite-video-window-button"));
-        windowButton->setIcon(
-            QIcon::fromTheme(QStringLiteral("window-new"), style()->standardIcon(QStyle::SP_TitleBarNormalButton)));
+        windowButton->setIcon(videoControlIcon(
+            QIcon::fromTheme(QStringLiteral("window-new"), style()->standardIcon(QStyle::SP_TitleBarNormalButton))));
         updateWindowButton();
         row->addWidget(windowButton);
         fullscreenButton = new QToolButton(controls);
@@ -501,6 +517,11 @@ protected:
             fullscreenButton->click();
             return true;
         }
+        if (object == video && event->type() == QEvent::MouseButtonRelease
+            && static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
+            toggle(); // Click the frame to pause/resume without touching its controls.
+            return true;
+        }
         return false;
     }
 
@@ -550,7 +571,7 @@ private:
     {
         const bool fullscreen
             = externalFullscreen ? window()->isFullScreen() : (floating && floating->isFullscreenMode());
-        fullscreenButton->setIcon(ITEVideoController::fullscreenIcon(palette(), fullscreen));
+        fullscreenButton->setIcon(videoControlIcon(ITEVideoController::fullscreenIcon(palette(), fullscreen)));
         fullscreenButton->setToolTip(fullscreen ? ITEVideoController::tr("Exit full screen")
                                                 : ITEVideoController::tr("Full screen"));
         fullscreenButton->setAccessibleName(fullscreenButton->toolTip());
@@ -652,7 +673,7 @@ private:
 
     void updateState(bool playing)
     {
-        button->setIcon(style()->standardIcon(playing ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay));
+        button->setIcon(videoControlIcon(style()->standardIcon(playing ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay)));
         button->setToolTip(playing ? ITEVideoController::tr("Pause") : ITEVideoController::tr("Play"));
         button->setAccessibleName(button->toolTip());
     }
