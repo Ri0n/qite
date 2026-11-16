@@ -279,6 +279,15 @@ private slots:
         QVERIFY(hasLightPixel(standard));
         QVERIFY(hasLightPixel(retina));
         QVERIFY(hasLightPixel(disabled));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        // QIcon::pixmap(size, dpr) used a different scaledPixmap size
+        // convention until Qt 6.8. Guard both paths against oversized icons.
+        const QPixmap requested2x = play->icon().pixmap(QSize(24, 24), 2.0,
+                                                        QIcon::Normal, QIcon::Off);
+        QVERIFY(!requested2x.isNull());
+        QVERIFY(requested2x.width() / requested2x.devicePixelRatio() <= 24.5);
+        QVERIFY(requested2x.height() / requested2x.devicePixelRatio() <= 24.5);
+#endif
     }
 
     void videoFrameReportsIntrinsicSize()
