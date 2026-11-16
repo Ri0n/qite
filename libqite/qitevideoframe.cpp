@@ -14,8 +14,23 @@ QList<QVideoFrame::PixelFormat> ITEVideoSurface::supportedPixelFormats(QAbstract
 {
     if (type != QAbstractVideoBuffer::NoHandle)
         return {};
-    return { QVideoFrame::Format_RGB32, QVideoFrame::Format_ARGB32, QVideoFrame::Format_ARGB32_Premultiplied,
-             QVideoFrame::Format_RGB24, QVideoFrame::Format_RGB565, QVideoFrame::Format_RGB555 };
+    // Prefer directly paintable RGB frames, but allow the software formats
+    // that Qt 5.15's QVideoFrame::image() can convert. Some GStreamer sinks
+    // expose only NV12/YUV420P or BGR, even when AAC audio decodes correctly.
+    QList<QVideoFrame::PixelFormat> formats {
+        QVideoFrame::Format_RGB32, QVideoFrame::Format_ARGB32, QVideoFrame::Format_ARGB32_Premultiplied,
+        QVideoFrame::Format_RGB24, QVideoFrame::Format_RGB565, QVideoFrame::Format_RGB555
+    };
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    formats << QVideoFrame::Format_BGRA32 << QVideoFrame::Format_BGRA32_Premultiplied
+            << QVideoFrame::Format_BGR32 << QVideoFrame::Format_BGR24
+            << QVideoFrame::Format_BGR565 << QVideoFrame::Format_BGR555
+            << QVideoFrame::Format_YUV420P << QVideoFrame::Format_YV12
+            << QVideoFrame::Format_NV12 << QVideoFrame::Format_NV21
+            << QVideoFrame::Format_UYVY << QVideoFrame::Format_YUYV
+            << QVideoFrame::Format_YUV444 << QVideoFrame::Format_AYUV444;
+#endif
+    return formats;
 }
 
 bool ITEVideoSurface::present(const QVideoFrame &frame)
@@ -123,11 +138,37 @@ void ITEVideoFrameWidget::paintEvent(QPaintEvent *)
     options.backgroundColor = Qt::black;
     frame.paint(&painter, rect(), options);
 #else
-    if (!frame.map(QAbstractVideoBuffer::ReadOnly))
+    const auto format = QVideoFrame::imageFormatFromPixelFormat(frame.pixelFormat());
+    QImage converted;
+    QImage image;
+    bool mapped = false;
+    if (format != QImage::Format_Invalid) {
+        // Fast path: direct RGB scan lines, borrowed only for this paint event.
+        mapped = frame.map(QAbstractVideoBuffer::ReadOnly);
+        if (mapped)
+            image = QImage(frame.bits(), frame.width(), frame.height(), frame.bytesPerLine(), format);
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    else {
+        // Qt already has tested native converters for planar YUV and BGR.
+        // Do not interpret those bytes as packed RGB or add a second decoder.
+        converted = frame.image();
+        image = converted;
+    }
+#endif
+    if (image.isNull()) {
+        if (!warnedUnmappableFrame) {
+            warnedUnmappableFrame = true;
+            qWarning() << "Qite Qt 5: cannot paint video frame, pixel format"
+                       << frame.pixelFormat() << "size" << frame.size()
+                       << "handle" << frame.handleType();
+        }
+        if (mapped)
+            frame.unmap();
         return;
-    const QImage image(frame.bits(), frame.width(), frame.height(), frame.bytesPerLine(),
-                       QVideoFrame::imageFormatFromPixelFormat(frame.pixelFormat()));
-    QSizeF       size = displaySize.isValid() ? QSizeF(displaySize) : QSizeF(image.size());
+    }
+    warnedUnmappableFrame = false;
+    QSizeF size = displaySize.isValid() ? QSizeF(displaySize) : QSizeF(image.size());
     size.scale(this->size(), Qt::KeepAspectRatio);
     const QRectF target((width() - size.width()) / 2, (height() - size.height()) / 2, size.width(), size.height());
     if (bottomUp) {
@@ -135,6 +176,7 @@ void ITEVideoFrameWidget::paintEvent(QPaintEvent *)
         painter.scale(1, -1);
     }
     painter.drawImage(target, image, sourceRect.isValid() ? sourceRect : image.rect());
-    frame.unmap();
+    if (mapped)
+        frame.unmap();
 #endif
 }
