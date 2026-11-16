@@ -700,6 +700,31 @@ private slots:
     }
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    void surfaceConvertsNativeBgrAndAcceptsYuv()
+    {
+#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
+        QSKIP("Qt 5.15's QVideoFrame::image() is required for native format conversion");
+#else
+        ITEVideoFrameWidget output;
+        auto* surface = output.videoSurface();
+        const auto formats = surface->supportedPixelFormats(QAbstractVideoBuffer::NoHandle);
+        QVERIFY(formats.contains(QVideoFrame::Format_BGR24));
+        QVERIFY(formats.contains(QVideoFrame::Format_NV12));
+        QVERIFY(formats.contains(QVideoFrame::Format_YUV420P));
+        QVERIFY(surface->start(QVideoSurfaceFormat(QSize(4, 4), QVideoFrame::Format_BGR24)));
+        QVideoFrame frame(4 * 4 * 3, QSize(4, 4), 4 * 3, QVideoFrame::Format_BGR24);
+        QVERIFY(frame.map(QAbstractVideoBuffer::WriteOnly));
+        for (int i = 0; i < frame.mappedBytes(); ++i)
+            frame.bits()[i] = 220;
+        frame.unmap();
+        QVERIFY(surface->present(frame));
+        output.resize(80, 80);
+        output.show();
+        QTRY_VERIFY_WITH_TIMEOUT(output.grab().toImage().pixelColor(40, 40).red() > 150, 2000);
+        QCOMPARE(output.videoSize(), QSize(4, 4));
+#endif
+    }
+
     void surfaceViewport()
     {
         ITEVideoFrameWidget output;
