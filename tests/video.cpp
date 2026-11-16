@@ -1488,6 +1488,12 @@ private slots:
         QCOMPARE(edit.paints, 0);
         auto button = edit.findChild<QToolButton *>();
         button->click(); // Pause before seeking, so the target stays stable.
+        QCOMPARE(edit.findChild<QMediaPlayer *>(), player);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PausedState);
+#else
+        QTRY_COMPARE(player->state(), QMediaPlayer::PausedState);
+#endif
         auto slider = edit.findChild<QSlider *>();
         QTRY_VERIFY(slider->isEnabled());
         slider->setValue(5000); // Also exercises keyboard/page-step seek handling.

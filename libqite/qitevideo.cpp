@@ -780,6 +780,23 @@ private:
     {
         if (requiresOpener && !opener)
             return;
+        // An already-playing stream must pause without entering error recovery.
+        // A video-decoder error may coexist with working audio playback.
+        if (player) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            const auto playbackState = player->playbackState();
+#else
+            const auto playbackState = player->state();
+#endif
+            if (playbackState == QMediaPlayer::PlayingState) {
+                player->pause();
+                return;
+            }
+            if (playbackState == QMediaPlayer::PausedState) {
+                player->play();
+                return;
+            }
+        }
         const bool retry = player
             && (inputFailed || player->error() != QMediaPlayer::NoError
                 || (mediaState && !mediaState->sourceError().isEmpty()));
@@ -861,15 +878,7 @@ private:
             }
             attachInput(nullptr, source);
         }
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        const bool playing = player->playbackState() == QMediaPlayer::PlayingState;
-#else
-        const bool playing = player->state() == QMediaPlayer::PlayingState;
-#endif
-        if (playing)
-            player->pause();
-        else
-            player->play();
+        player->play();
     }
 
     void updateTime()
