@@ -50,7 +50,9 @@ public:
     explicit VideoControlIconEngine(QIcon source) : source_(std::move(source)) {}
 
     QIconEngine *clone() const override { return new VideoControlIconEngine(source_); }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool isNull() override { return source_.isNull(); }
+#endif
 
     void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override
     {
@@ -67,11 +69,11 @@ public:
         return renderPixmap(size, mode, state, 1.0);
     }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal dpr) override
     {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-        // Qt 6.0–6.7 pass physical, not logical, size here (fixed in Qt 6.8).
-        // Keep QIcon::pixmap(QSize, dpr) correct on both sides of Qt 6.8.
+        // Before Qt 6.8, Qt incorrectly supplied physical pixels as size.
         const QSize logical(qMax(1, qRound(size.width() / qMax<qreal>(1.0, dpr))),
                             qMax(1, qRound(size.height() / qMax<qreal>(1.0, dpr))));
         return renderPixmap(logical, mode, state, dpr);
@@ -79,6 +81,27 @@ public:
         return renderPixmap(size, mode, state, dpr);
 #endif
     }
+#else
+    // In Qt 5 isNull() and scaledPixmap() are nonvirtual wrappers around
+    // virtual_hook(); overriding those methods has no effect (and does not
+    // compile when marked override).
+    void virtual_hook(int id, void *data) override
+    {
+        if (id == QIconEngine::IsNullHook) {
+            if (data)
+                *static_cast<bool *>(data) = source_.isNull();
+            return;
+        }
+        if (id == QIconEngine::ScaledPixmapHook) {
+            if (data) {
+                auto *args = static_cast<QIconEngine::ScaledPixmapArgument *>(data);
+                args->pixmap = renderPixmap(args->size, args->mode, args->state, args->scale);
+            }
+            return;
+        }
+        QIconEngine::virtual_hook(id, data);
+    }
+#endif
 
 private:
     QPixmap renderPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal dpr) const
