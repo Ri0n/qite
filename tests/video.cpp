@@ -1519,7 +1519,7 @@ private slots:
         VideoController video(&text);
         // Override the bundled WebM fixture to reproduce platform-specific
         // H.264/AAC failures without committing a user's private video.
-        const QString clip = qEnvironmentVariable("QITE_TEST_VIDEO_FILE", QITE_TEST_VIDEO);
+        const QString clip = qEnvironmentVariable("QITE_TEST_VIDEO_FILE", QStringLiteral(QITE_TEST_VIDEO));
         video.insert(QUrl::fromLocalFile(clip));
         edit.insertPlainText("\n" + QString("chat\n").repeated(2000));
         edit.moveCursor(QTextCursor::Start);
