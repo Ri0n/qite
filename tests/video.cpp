@@ -1499,9 +1499,11 @@ private slots:
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         QSignalSpy frames(edit.findChild<ITEVideoFrameWidget *>()->videoSink(), &QVideoSink::videoFrameChanged);
 #else
-        QVideoProbe probe;
-        QVERIFY(probe.setSource(player));
-        QSignalSpy frames(&probe, &QVideoProbe::videoFrameProbed);
+        // A QVideoProbe can receive decoded frames even when the player
+        // cannot negotiate its QAbstractVideoSurface. Assert on the actual
+        // raster output path instead (the original audio-only regression).
+        QSignalSpy frames(edit.findChild<ITEVideoFrameWidget *>()->videoSurface(),
+                          &ITEVideoSurface::frameReady);
 #endif
         QTRY_VERIFY_WITH_TIMEOUT(frames.count() >= 5, 10000);
         QSignalSpy changed(edit.document(), &QTextDocument::contentsChanged);
@@ -1513,6 +1515,12 @@ private slots:
         QCOMPARE(edit.paints, 0);
         auto button = edit.findChild<QToolButton *>();
         button->click(); // Pause before seeking, so the target stays stable.
+        QCOMPARE(edit.findChild<QMediaPlayer *>(), player); // Never restart on Pause.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PausedState);
+#else
+        QTRY_COMPARE(player->state(), QMediaPlayer::PausedState);
+#endif
         auto slider = edit.findChild<QSlider *>();
         QTRY_VERIFY(slider->isEnabled());
         slider->setValue(5000); // Also exercises keyboard/page-step seek handling.
