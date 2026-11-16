@@ -780,20 +780,19 @@ private:
     {
         if (requiresOpener && !opener)
             return;
-        // Transport actions on a running or paused stream must not recreate
-        // its decoder just because the video sink reported a nonfatal error.
-        // Retry is reserved for a stopped/failed player or EndOfMedia.
+        // An already-playing stream must pause without entering error recovery.
+        // A video-decoder error may coexist with working audio playback.
         if (player) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            const auto state = player->playbackState();
+            const auto playbackState = player->playbackState();
 #else
-            const auto state = player->state();
+            const auto playbackState = player->state();
 #endif
-            if (state == QMediaPlayer::PlayingState) {
+            if (playbackState == QMediaPlayer::PlayingState) {
                 player->pause();
                 return;
             }
-            if (state == QMediaPlayer::PausedState) {
+            if (playbackState == QMediaPlayer::PausedState) {
                 player->play();
                 return;
             }
@@ -904,13 +903,6 @@ private:
 
     void showError(const QString &message)
     {
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-        // A failed video sink can coexist with audible playback. Capture the
-        // decoder status for field reports instead of silently restarting it.
-        qWarning().noquote() << "Qite Qt5 playback error:" << message
-                             << "state:" << (player ? int(player->state()) : -1)
-                             << "mediaStatus:" << (player ? int(player->mediaStatus()) : -1);
-#endif
         inputFailed = true;
         buffering->hide();
         const auto detail = mediaState && !mediaState->sourceError().isEmpty() ? mediaState->sourceError() : message;
