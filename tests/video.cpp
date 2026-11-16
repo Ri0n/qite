@@ -366,6 +366,16 @@ private slots:
         QTRY_VERIFY(player->parentWidget() != &host);
         QTRY_VERIFY(art->isVisible());
         QVERIFY(player->property("qite-audio-artwork-visible").toBool());
+        auto* fullscreen = player->findChild<QToolButton*>(
+            QStringLiteral("qite-video-fullscreen-button"));
+        QVERIFY(fullscreen);
+        fullscreen->click();
+        QTRY_VERIFY(player->window()->isFullScreen());
+        QCOMPARE(art->parentWidget(), player->window()); // Not the hidden video frame.
+        QVERIFY(art->isVisible());
+        fullscreen->click();
+        QTRY_VERIFY(!player->window()->isFullScreen());
+        QCOMPARE(art->parentWidget(), player);
         // Returning to the message hides only fallback art, not the toolbar.
         popout->click();
         QTRY_COMPARE(player->parentWidget(), &host);
