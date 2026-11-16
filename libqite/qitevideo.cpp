@@ -27,6 +27,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <functional>
+#include <utility>
 
 namespace {
 enum Property { Source = InteractiveTextFormat::UserProperty, Opener, Size, Downloadable };
@@ -56,17 +57,31 @@ public:
         if (!painter || rect.isEmpty())
             return;
         const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
-        const QPixmap rendered = scaledPixmap(rect.size(), mode, state, dpr);
+        const QPixmap rendered = renderPixmap(rect.size(), mode, state, dpr);
         if (!rendered.isNull())
             painter->drawPixmap(rect, rendered);
     }
 
     QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override
     {
-        return scaledPixmap(size, mode, state, 1.0);
+        return renderPixmap(size, mode, state, 1.0);
     }
 
     QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal dpr) override
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+        // Qt 6.0–6.7 pass physical, not logical, size here (fixed in Qt 6.8).
+        // Keep QIcon::pixmap(QSize, dpr) correct on both sides of Qt 6.8.
+        const QSize logical(qMax(1, qRound(size.width() / qMax<qreal>(1.0, dpr))),
+                            qMax(1, qRound(size.height() / qMax<qreal>(1.0, dpr))));
+        return renderPixmap(logical, mode, state, dpr);
+#else
+        return renderPixmap(size, mode, state, dpr);
+#endif
+    }
+
+private:
+    QPixmap renderPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal dpr) const
     {
         if (size.isEmpty())
             return {};
@@ -90,7 +105,6 @@ public:
         return image;
     }
 
-private:
     QIcon source_;
 };
 
