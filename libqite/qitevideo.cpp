@@ -926,10 +926,19 @@ private:
     {
         if (!artwork || !player)
             return;
+        const auto asImage = [](const QVariant &value) {
+            QImage image = value.value<QImage>();
+            if (image.isNull() && value.canConvert<QPixmap>())
+                image = value.value<QPixmap>().toImage();
+            return image;
+        };
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        const QImage cover = player->metaData().value(QMediaMetaData::CoverArtImage).value<QImage>();
+        const auto meta = player->metaData();
+        QImage cover = asImage(meta.value(QMediaMetaData::CoverArtImage));
+        if (cover.isNull())
+            cover = asImage(meta.value(QMediaMetaData::ThumbnailImage));
 #else
-        const QImage cover = qvariant_cast<QImage>(player->metaData(QMediaMetaData::CoverArtImage));
+        const QImage cover = asImage(player->metaData(QMediaMetaData::CoverArtImage));
 #endif
         artwork->setCover(cover);
         updateAudioArtworkVisibility();
