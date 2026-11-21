@@ -362,6 +362,16 @@ private:
 
     bool fits(const QVector<char> &direct, bool menuVisible) const
     {
+        // The control strip may show at most three action slots. When an
+        // overflow menu is required, its button takes one of those slots.
+        // AlwaysVisible actions are not evicted, even if the user pins more
+        // controls than this limit can accommodate.
+        int actionSlots = menuVisible ? 1 : 0;
+        for (const char visible : direct)
+            actionSlots += visible ? 1 : 0;
+        if (actionSlots > 3)
+            return false;
+
         auto *row = qobject_cast<QHBoxLayout *>(layout());
         if (!row || width() <= 0)
             return true;
