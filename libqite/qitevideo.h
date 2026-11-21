@@ -25,8 +25,9 @@ public:
                                  qint64 position = 0, bool audioPresentation = false,
                                  bool compactInlineAudio = false);
     // The host may attach context-specific actions to a player at any time.
-    // Stable ids support positioning after a built-in or another action. Users
-    // may override the default visibility in the toolbar context menu.
+    // Stable ids support positioning after a built-in or another action.
+    // The host configures visibility through this API; no user settings are
+    // persisted or exposed in the media toolbar.
     enum class ControlVisibility { AlwaysVisible, Automatic, Overflow };
     static QToolButton *addPlayerAction(QWidget *player, const QString &id, QAction *action,
                                         const QString &afterId = {},
