@@ -7,7 +7,6 @@
 
 #include <QAbstractTextDocumentLayout>
 #include <QAction>
-#include <QSettings>
 #include <QBuffer>
 #include <QFile>
 #include <QHelpEvent>
@@ -390,7 +389,7 @@ private slots:
         delete player;
     }
 
-    void toolbarActionsOverflowAndCanBeCustomized()
+    void toolbarActionsOverflowWithDeveloperPolicies()
     {
         StateOpener opener;
         QWidget host;
@@ -403,6 +402,8 @@ private slots:
         auto *window = player->findChild<QToolButton *>("qite-video-window-button");
         auto *fullscreen = player->findChild<QToolButton *>("qite-video-fullscreen-button");
         QVERIFY(more && window && fullscreen);
+        QCOMPARE(more->text(), QStringLiteral("⋮"));
+        QVERIFY(more->styleSheet().contains(QStringLiteral("QToolButton::menu-indicator")));
         // All three built-in actions fit without an overflow menu.
         QTRY_VERIFY(more->isHidden());
         QVERIFY(!window->isHidden());
@@ -430,7 +431,7 @@ private slots:
         more->menu()->popup(more->mapToGlobal(QPoint(0, 0)));
         QCoreApplication::processEvents();
         const auto actions = more->menu()->actions();
-        QVERIFY(!actions.isEmpty());
+        QCOMPARE(actions.size(), 1); // Actions only, no user customization submenu.
         QCOMPARE(actions.first()->text(), link->toolTip());
         actions.first()->trigger();
         QCOMPARE(triggered.size(), 1);
@@ -458,7 +459,6 @@ private slots:
         QVERIFY(ITEVideoController::setPlayerActionVisibility(player, "qite-test-copy-link",
                                                                  Visibility::Overflow));
         QTRY_VERIFY(copy->isHidden());
-        QSettings().remove(QStringLiteral("qite/media-controls/qite-test-copy-link"));
         delete player;
     }
 
