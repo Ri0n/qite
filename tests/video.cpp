@@ -6,11 +6,14 @@
 #include "qitevideoframe_p.h"
 
 #include <QAbstractTextDocumentLayout>
+#include <QAction>
+#include <QSettings>
 #include <QBuffer>
 #include <QFile>
 #include <QHelpEvent>
 #include <QLabel>
 #include <QMainWindow>
+#include <QMenu>
 #include <QMediaPlayer>
 #include <QMouseEvent>
 #include <QPainter>
@@ -387,6 +390,59 @@ private slots:
         delete player;
     }
 
+    void toolbarActionsOverflowAndCanBeCustomized()
+    {
+        StateOpener opener;
+        QWidget host;
+        host.resize(560, 320);
+        auto *player = ITEVideoController::createPlayer(QUrl("test:menu"), &opener, &host);
+        player->resize(390, 240);
+        auto *link = new QAction(tr("Copy link"), player);
+        link->setToolTip(tr("Copy link"));
+        QSignalSpy triggered(link, &QAction::triggered);
+        using Visibility = ITEVideoController::ControlVisibility;
+        auto *copy = ITEVideoController::addPlayerAction(player, "qite-test-copy-link", link,
+                    "qite-video-window-button", Visibility::Overflow);
+        QVERIFY(copy);
+        QVERIFY(!ITEVideoController::addPlayerAction(player, "qite-test-copy-link", link));
+        host.show();
+        player->show();
+        auto *more = player->findChild<QToolButton *>("qite-video-more-button");
+        QVERIFY(more);
+        QTRY_VERIFY(copy->isHidden());
+        QTRY_VERIFY(!more->isHidden());
+        QVERIFY(more->menu());
+        // Menus never duplicate a hidden action, even after a resize.
+        more->menu()->popup(more->mapToGlobal(QPoint(0, 0)));
+        QCoreApplication::processEvents();
+        const auto actions = more->menu()->actions();
+        QVERIFY(!actions.isEmpty());
+        QCOMPARE(actions.first()->text(), link->toolTip());
+        actions.first()->trigger();
+        QCOMPARE(triggered.size(), 1);
+        more->menu()->hide();
+        QVERIFY(ITEVideoController::setPlayerActionVisibility(player, "qite-test-copy-link",
+                                                                 Visibility::AlwaysVisible));
+        QTRY_VERIFY(!copy->isHidden());
+        QVERIFY(!ITEVideoController::setPlayerActionVisibility(player, "missing", Visibility::Automatic));
+        // Automatic actions collapse as space disappears and return when it
+        // expands. Pinned fullscreen remains visible in both presentations.
+        QVERIFY(ITEVideoController::setPlayerActionVisibility(player, "qite-test-copy-link",
+                                                                 Visibility::Automatic));
+        player->resize(190, 240);
+        QTRY_VERIFY(copy->isHidden());
+        QTRY_VERIFY(!more->isHidden());
+        QVERIFY(!player->findChild<QToolButton *>("qite-video-fullscreen-button")->isHidden());
+        player->resize(740, 240);
+        QTRY_VERIFY(!copy->isHidden());
+        QTRY_VERIFY(more->isHidden());
+        QVERIFY(ITEVideoController::setPlayerActionVisibility(player, "qite-test-copy-link",
+                                                                 Visibility::Overflow));
+        QTRY_VERIFY(copy->isHidden());
+        QSettings().remove(QStringLiteral("qite/media-controls/qite-test-copy-link"));
+        delete player;
+    }
+
     void failedPreparationCanBeRetried()
     {
         class FailingOpener : public StateOpener {
@@ -615,11 +671,9 @@ private slots:
         QCOMPARE(borrowed->findChild<QMediaPlayer *>(), decoder);
         QVERIFY(!full->isHidden());
         QVERIFY(!popup->isHidden());
-        bool hasTimeDisplay = false;
-        for (auto *label : widget->findChildren<QLabel *>())
-            if (label->text().contains(QStringLiteral(" / ")))
-                hasTimeDisplay = true;
-        QVERIFY(hasTimeDisplay);
+        auto *durationLabel = widget->findChild<QLabel *>(QStringLiteral("qite-video-duration"));
+        QVERIFY(durationLabel);
+        QVERIFY(!durationLabel->text().contains(QStringLiteral(" / "))); // Current time is on the seek slider.
         // Without a host handler, qite's own fullscreen must still reparent
         // the same decoder rather than recreate it.
         controller.setPlayerTransferHandler({});
@@ -832,7 +886,7 @@ private slots:
         edit.show();
         QTRY_VERIFY(edit.findChild<ITEVideoFrameWidget *>());
         auto frame = edit.findChild<ITEVideoFrameWidget *>();
-        QCOMPARE(frame->cursor().shape(), Qt::ArrowCursor);
+        QCOMPARE(frame->cursor().shape(), Qt::PointingHandCursor); // Click toggles playback.
         auto inlinePlayer = frame->parentWidget();
         auto button       = inlinePlayer->findChild<QToolButton *>(QStringLiteral("qite-video-fullscreen-button"));
         auto controls     = inlinePlayer->findChild<QWidget *>(QStringLiteral("qite-video-controls"));
