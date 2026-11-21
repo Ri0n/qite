@@ -6,11 +6,8 @@
 
 #include <QAbstractTextDocumentLayout>
 #include <QAction>
-#include <QActionGroup>
-#include <QContextMenuEvent>
 #include <QHBoxLayout>
 #include <QMenu>
-#include <QSettings>
 #include <QSizePolicy>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QAudioOutput>
@@ -170,12 +167,7 @@ public:
     {
         if (!button || id.isEmpty() || findControl(id))
             return;
-        QSettings settings;
-        const int configured = settings.value(QStringLiteral("qite/media-controls/") + id,
-                                               int(initial)).toInt();
-        const auto visibility = configured >= 0 && configured <= int(Visibility::Overflow)
-            ? Visibility(configured) : initial;
-        const Control entry { id, button, visibility, true };
+        const Control entry { id, button, initial, true };
         int insertAt = controls_.size();
         for (int i = 0; i < controls_.size(); ++i) {
             if (!afterId.isEmpty() && controls_.at(i).id == afterId) {
@@ -184,7 +176,6 @@ public:
             }
         }
         controls_.insert(insertAt, entry);
-        button->installEventFilter(this);
         refresh();
     }
 
@@ -195,7 +186,12 @@ public:
             return;
         more_ = new QToolButton(this);
         more_->setObjectName(QStringLiteral("qite-video-more-button"));
-        more_->setText(QStringLiteral("⋯"));
+        more_->setText(QStringLiteral("⋮"));
+        more_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        // InstantPopup adds a native menu arrow on some Qt styles. The
+        // vertical ellipsis already communicates that this opens a menu.
+        more_->setStyleSheet(QStringLiteral(
+            "QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }"));
         more_->setToolTip(tr("More controls"));
         more_->setAccessibleName(more_->toolTip());
         more_->setFocusPolicy(Qt::TabFocus);
@@ -253,7 +249,6 @@ public:
         if (!control)
             return false;
         control->visibility = visibility;
-        QSettings().setValue(QStringLiteral("qite/media-controls/") + id, int(visibility));
         refresh();
         return true;
     }
@@ -328,22 +323,6 @@ protected:
             refresh(); // Also handles cache-indicator and buffering visibility.
         return handled;
     }
-    bool eventFilter(QObject *object, QEvent *event) override
-    {
-        if (event->type() == QEvent::ContextMenu) {
-            for (const auto &control : controls_) {
-                if (control.button == object) {
-                    auto *context = static_cast<QContextMenuEvent *>(event);
-                    QMenu menu(this);
-                    populatePolicy(&menu, control.id);
-                    menu.exec(context->globalPos());
-                    return true;
-                }
-            }
-        }
-        return QWidget::eventFilter(object, event);
-    }
-
 private:
     Control *findControl(const QString &id)
     {
@@ -364,8 +343,8 @@ private:
     {
         // The control strip may show at most three action slots. When an
         // overflow menu is required, its button takes one of those slots.
-        // AlwaysVisible actions are not evicted, even if the user pins more
-        // controls than this limit can accommodate.
+        // AlwaysVisible actions are not evicted even when the host pins
+        // more controls than this limit can accommodate.
         int actionSlots = menuVisible ? 1 : 0;
         for (const char visible : direct)
             actionSlots += visible ? 1 : 0;
@@ -397,24 +376,6 @@ private:
         return needed + qMax(0, count - 1) * row->spacing() <= width();
     }
 
-    void populatePolicy(QMenu *menu, const QString &id)
-    {
-        const auto *control = findControl(id);
-        if (!control)
-            return;
-        QActionGroup *group = new QActionGroup(menu);
-        group->setExclusive(true);
-        for (const auto choice : { Visibility::AlwaysVisible, Visibility::Automatic, Visibility::Overflow }) {
-            const QString label = choice == Visibility::AlwaysVisible ? tr("Always visible")
-                : choice == Visibility::Automatic ? tr("Automatic") : tr("Always in menu");
-            auto *item = menu->addAction(label);
-            item->setCheckable(true);
-            item->setChecked(control->visibility == choice);
-            group->addAction(item);
-            connect(item, &QAction::triggered, this, [this, id, choice] { setVisibility(id, choice); });
-        }
-    }
-
     void populateMenu(QMenu *menu)
     {
         menu->clear();
@@ -428,16 +389,6 @@ private:
                     button->click();
             });
             item->setEnabled(button->isEnabled());
-        }
-        if (!menu->actions().isEmpty())
-            menu->addSeparator();
-        auto *configure = menu->addMenu(tr("Customize controls"));
-        for (const auto &control : controls_) {
-            if (control.button && control.available) {
-                const QString title = control.button->toolTip().isEmpty() ? control.id
-                                                                            : control.button->toolTip();
-                populatePolicy(configure->addMenu(title), control.id);
-            }
         }
     }
 
