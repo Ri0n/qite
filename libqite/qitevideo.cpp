@@ -341,13 +341,15 @@ private:
 
     bool fits(const QVector<char> &direct, bool menuVisible) const
     {
-        // The control strip may show at most three action slots. When an
-        // overflow menu is required, its button takes one of those slots.
-        // AlwaysVisible actions are not evicted even when the host pins
-        // more controls than this limit can accommodate.
+        // The Play button lives to the left of the seek slider and is not
+        // part of the right-hand action group. That group may display up to
+        // three buttons, or two buttons and the overflow trigger. Pinned
+        // actions are never evicted even if the host exceeds this limit.
         int actionSlots = menuVisible ? 1 : 0;
-        for (const char visible : direct)
-            actionSlots += visible ? 1 : 0;
+        for (int i = 0; i < controls_.size(); ++i) {
+            if (direct.at(i) && controls_.at(i).id != QLatin1String("qite-video-play"))
+                ++actionSlots;
+        }
         if (actionSlots > 3)
             return false;
 
