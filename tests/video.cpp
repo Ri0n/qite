@@ -389,6 +389,61 @@ private slots:
         delete player;
     }
 
+    void toolbarRightSideSlotsAreIndependentOfPlay()
+    {
+        StateOpener opener;
+        QWidget host;
+        host.resize(900, 320);
+        auto *player = ITEVideoController::createPlayer(QUrl("test:slots"), &opener, &host);
+        player->resize(740, 240);
+        host.show();
+        player->show();
+        auto *play = player->findChild<QToolButton *>("qite-video-play");
+        auto *window = player->findChild<QToolButton *>("qite-video-window-button");
+        auto *fullscreen = player->findChild<QToolButton *>("qite-video-fullscreen-button");
+        auto *more = player->findChild<QToolButton *>("qite-video-more-button");
+        QVERIFY(play && window && fullscreen && more);
+        QTRY_VERIFY(more->isHidden());
+
+        // Play is separate. Two built-ins plus one added action should all
+        // remain visible on the right, without an overflow button.
+        using Visibility = ITEVideoController::ControlVisibility;
+        auto *firstAction = new QAction(tr("First extra"), player);
+        firstAction->setToolTip(firstAction->text());
+        auto *first = ITEVideoController::addPlayerAction(
+            player, "qite-test-extra-first", firstAction, "qite-video-window-button", Visibility::Automatic);
+        QVERIFY(first);
+        QTRY_VERIFY(!first->isHidden());
+        QVERIFY(!window->isHidden());
+        QVERIFY(!fullscreen->isHidden());
+        QVERIFY(!play->isHidden());
+        QTRY_VERIFY(more->isHidden());
+
+        // Four right-side actions require exactly two direct actions plus
+        // overflow; the Play button does not consume a right-side slot.
+        auto *secondAction = new QAction(tr("Second extra"), player);
+        secondAction->setToolTip(secondAction->text());
+        auto *second = ITEVideoController::addPlayerAction(
+            player, "qite-test-extra-second", secondAction, "qite-test-extra-first", Visibility::Automatic);
+        QVERIFY(second);
+        QTRY_VERIFY(second->isHidden());
+        QTRY_VERIFY(first->isHidden());
+        QTRY_VERIFY(!more->isHidden());
+        QVERIFY(!play->isHidden());
+        QVERIFY(!window->isHidden());
+        QVERIFY(!fullscreen->isHidden());
+
+        // Developer-pinned actions take precedence over Automatic controls.
+        QVERIFY(ITEVideoController::setPlayerActionVisibility(
+            player, "qite-test-extra-first", Visibility::AlwaysVisible));
+        QTRY_VERIFY(!first->isHidden());
+        QTRY_VERIFY(window->isHidden());
+        QVERIFY(!fullscreen->isHidden());
+        QVERIFY(!play->isHidden());
+        QVERIFY(!more->isHidden());
+        delete player;
+    }
+
     void toolbarActionsOverflowWithDeveloperPolicies()
     {
         StateOpener opener;
@@ -404,15 +459,6 @@ private slots:
         QVERIFY(more && window && fullscreen);
         QCOMPARE(more->text(), QStringLiteral("⋮"));
         QVERIFY(more->styleSheet().contains(QStringLiteral("QToolButton::menu-indicator")));
-        // All three built-in actions fit without an overflow menu.
-        QTRY_VERIFY(more->isHidden());
-        QVERIFY(!window->isHidden());
-        player->resize(190, 240);
-        QTRY_VERIFY(window->isHidden());
-        QTRY_VERIFY(!more->isHidden());
-        QVERIFY(!fullscreen->isHidden());
-        player->resize(740, 240);
-        QTRY_VERIFY(!window->isHidden());
         QTRY_VERIFY(more->isHidden());
 
         auto *link = new QAction(tr("Copy link"), player);
@@ -423,11 +469,11 @@ private slots:
                     "qite-video-window-button", Visibility::Overflow);
         QVERIFY(copy);
         QVERIFY(!ITEVideoController::addPlayerAction(player, "qite-test-copy-link", link));
-        // A fourth action is overflowed even on a wide toolbar.
         QTRY_VERIFY(copy->isHidden());
         QTRY_VERIFY(!more->isHidden());
+        QVERIFY(!window->isHidden());
+        QVERIFY(!fullscreen->isHidden());
         QVERIFY(more->menu());
-        // Menus never duplicate a hidden action, even after a resize.
         more->menu()->popup(more->mapToGlobal(QPoint(0, 0)));
         QCoreApplication::processEvents();
         const auto actions = more->menu()->actions();
@@ -436,29 +482,32 @@ private slots:
         actions.first()->trigger();
         QCOMPARE(triggered.size(), 1);
         more->menu()->hide();
-        QVERIFY(ITEVideoController::setPlayerActionVisibility(player, "qite-test-copy-link",
-                                                                 Visibility::AlwaysVisible));
+
+        // Three direct actions on the right are fine when nothing is hidden.
+        QVERIFY(ITEVideoController::setPlayerActionVisibility(
+            player, "qite-test-copy-link", Visibility::AlwaysVisible));
         QTRY_VERIFY(!copy->isHidden());
-        // Pinned controls are never sacrificed for the three-slot limit.
-        QVERIFY(window->isHidden());
+        QVERIFY(!window->isHidden());
         QVERIFY(!fullscreen->isHidden());
+        QTRY_VERIFY(more->isHidden());
         QVERIFY(!ITEVideoController::setPlayerActionVisibility(player, "missing", Visibility::Automatic));
-        // Restoring Automatic must again leave just two direct actions and
-        // the menu; resizing wider cannot bypass the three-slot cap.
-        QVERIFY(ITEVideoController::setPlayerActionVisibility(player, "qite-test-copy-link",
-                                                                 Visibility::Automatic));
-        QTRY_VERIFY(copy->isHidden());
-        QTRY_VERIFY(!more->isHidden());
-        QVERIFY(window->isHidden());
+
+        // Width can still force Automatic actions into overflow; they return
+        // when the strip grows, independently of the three-action cap.
+        QVERIFY(ITEVideoController::setPlayerActionVisibility(
+            player, "qite-test-copy-link", Visibility::Automatic));
         player->resize(190, 240);
         QTRY_VERIFY(copy->isHidden());
+        QTRY_VERIFY(!more->isHidden());
         QVERIFY(!fullscreen->isHidden());
         player->resize(740, 240);
+        QTRY_VERIFY(!copy->isHidden());
+        QTRY_VERIFY(!window->isHidden());
+        QTRY_VERIFY(more->isHidden());
+        QVERIFY(ITEVideoController::setPlayerActionVisibility(
+            player, "qite-test-copy-link", Visibility::Overflow));
         QTRY_VERIFY(copy->isHidden());
         QTRY_VERIFY(!more->isHidden());
-        QVERIFY(ITEVideoController::setPlayerActionVisibility(player, "qite-test-copy-link",
-                                                                 Visibility::Overflow));
-        QTRY_VERIFY(copy->isHidden());
         delete player;
     }
 
